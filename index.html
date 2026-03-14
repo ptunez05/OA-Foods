@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OA Drinks & Snacks | The Real Taste is Finally Here</title>
+  <link rel="stylesheet" href="index.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Montserrat:wght@700;900&family=Dancing+Script:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="bot.css">
+  <!-- Facebook SDK for Page Plugin -->
+  <script async defer crossorigin="anonymous"
+    src="https://connect.facebook.net/en_GB/sdk.js#xfbml=1&version=v19.0"
+    nonce="oa2026fb">
+  </script>
+  <script src="bot.js" defer></script>
+</head>
+<body>
+
+  <div id="fb-root"></div>
+
+  <div id="preloader" class="shimmer">
+    <div class="skeleton-header"></div>
+    <div class="skeleton-hero"></div>
+    <div class="skeleton-grid container">
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+    </div>
+  </div>
+
+  <header class="header">
+    <div class="logo-container">
+      <img src="logo.png" alt="OA Logo" class="oa-logo-box" style="object-fit: contain; background: none;">
+      <div class="brand-text">
+        <h1 class="brand-name">
+          <span class="lime">OA</span> <span class="red">Drinks & Snacks</span>
+        </h1>
+        <p class="brand-tagline">…feel the new taste</p>
+      </div>
+    </div>
+
+    <div class="nav-right-actions">
+      <button id="theme-toggle" aria-label="Toggle Theme">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+      </button>
+
+      <div class="nav-trigger-wrapper">
+        <span class="menu-label">MENU</span>
+        <button class="hamburger" aria-label="Toggle menu">
+          <span class="line-top"></span>
+          <span class="line-bottom"></span>
+        </button>
+      </div>
+    </div>
+
+    <nav class="mobile-menu">
+      <ul>
+        <li><a href="consumer.html">Buy Here</a></li>
+        <li><a href="business.html">Wholesale Hub</a></li>
+        <li><a href="distributor.html">Distributors</a></li>
+        <li><a href="#about">About Us</a></li>
+        <li><a href="#social">Follow Us</a></li>
+        <li><a href="#contact">Contact Us</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <section class="parallax-hero">
+    <div class="hero-shimmer-overlay"></div>
+    <div class="hero-content">
+      <h2 class="hero-title animate-slide-up">
+        <span class="word" data-word="The">The</span>
+        <span class="word" data-word="real">real</span>
+        <span class="word" data-word="taste">taste</span>
+        <span class="word" data-word="is">is</span>
+        <span class="word" data-word="finally">finally</span>
+        <span class="word" data-word="here">here</span>
+      </h2>
+      <p class="hero-subtitle animate-slide-up delay-1">ZOBO · TIGER NUT MILK · CHIN CHIN · KULIKULI — Natural. Fresh. Delivered.</p>
+      <div class="hero-micro-delivery">
+        <span class="pulse-dot"></span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 14h.01"/><path d="M17 14h.01"/><path d="M4 10h16"/></svg>
+        <span>Nationwide Delivery</span>
+      </div>
+      <div class="hero-cta-stack animate-slide-up delay-2">
+        <a href="consumer.html" class="btn-primary ripple">Buy here</a>
+        <a href="business.html" class="btn-secondary-ghost ripple">Wholesale Rates &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+  <main class="scroll-container">
+    <section class="section-padding container">
+      <h3 class="section-label centered-title">Top Nigerian Favourites</h3>
+      
+      <div class="mini-product-grid">
+        <div class="mini-card slide-in">
+          <div class="mini-img-box">
+            <img src="zobo.png" alt="Zobo">
+          </div>
+          <div class="mini-info">
+            <h4>Zobo Power Pack</h4>
+            <p class="mini-desc">Sun-dried hibiscus &amp; fresh ginger · 12-pack</p>
+            <button class="buy-it-btn ripple">Shop &rarr;</button>
+          </div>
+        </div>
+
+        <div class="mini-card slide-in">
+          <div class="mini-img-box">
+            <img src="tigernut.png" alt="Tiger Nut">
+          </div>
+          <div class="mini-info">
+            <h4>Tiger Nut Milk</h4>
+            <p class="mini-desc">Naturally sweet, no preservatives · 12-pack</p>
+            <button class="buy-it-btn ripple">Shop &rarr;</button>
+          </div>
+        </div>
+
+        <div class="mini-card slide-in">
+          <div class="mini-img-box">
+            <img src="chin.png" alt="Chin Chin">
+          </div>
+          <div class="mini-info">
+            <h4>Crunchy Chin Chin</h4>
+            <p class="mini-desc">Slow-fried in-house · 1kg resealable bag</p>
+            <button class="buy-it-btn ripple">Shop &rarr;</button>
+          </div>
+        </div>
+
+        <div class="mini-card slide-in">
+          <div class="mini-img-box">
+            <img src="kuli.png" alt="Kulikuli">
+          </div>
+          <div class="mini-info">
+            <h4>Kulikuli Pack</h4>
+            <p class="mini-desc">Roasted groundnut cake, bold pepper kick · 500g</p>
+            <button class="buy-it-btn ripple">Shop &rarr;</button>
+          </div>
+        </div>
+      </div>
+      <div class="shop-all-wrap">
+        <a href="consumer.html" class="shop-all-cta ripple">See all products &amp; prices &rarr;</a>
+      </div>
+    </section>
+    <!-- ── Why OA? differentiator strip ── -->
+    <section class="why-oa-section container">
+      <h3 class="section-title centered-title why-oa-title">Why Choose OA?</h3>
+      <div class="why-oa-grid">
+
+        <div class="why-card slide-in">
+          <div class="why-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h4 class="why-label">No Preservatives</h4>
+          <p class="why-desc">Zero artificial colours, zero fake sweeteners. Every bottle and pack is made from raw, market-fresh ingredients — nothing more.</p>
+        </div>
+
+        <div class="why-card slide-in">
+          <div class="why-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          </div>
+          <h4 class="why-label">Same-Day Lagos Delivery</h4>
+          <p class="why-desc">Order before noon and get your packs the same day within Lagos. Other states confirmed within 24 hours — delivery fee quoted upfront.</p>
+        </div>
+
+        <div class="why-card slide-in">
+          <div class="why-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <h4 class="why-label">Bulk Discount Available</h4>
+          <p class="why-desc">Order 5 or more packs in any combination and get 10% off your entire cart — automatically applied at checkout.</p>
+        </div>
+
+        <div class="why-card slide-in">
+          <div class="why-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <h4 class="why-label">200+ Happy Customers</h4>
+          <p class="why-desc">Homes, offices, and small shops across Nigeria trust OA for their weekly supply. Founded 2011 — over a decade of consistency.</p>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="counter-section glass-counter" id="counter-trigger">
+      <div class="container">
+        <div class="multi-counter-grid">
+          <div class="counter-stat slide-in">
+            <div class="counter-number" id="counter-customers">0</div>
+            <p class="counter-sub">Customers Served</p>
+          </div>
+          <div class="counter-stat slide-in">
+            <div class="counter-number" id="counter-years">0</div>
+            <p class="counter-sub">Years of Real Taste</p>
+          </div>
+          <div class="counter-stat slide-in">
+            <div class="counter-number" id="counter-products">0</div>
+            <p class="counter-sub">Natural Products</p>
+          </div>
+          <div class="counter-stat slide-in">
+            <div class="counter-number" id="counter-states">0</div>
+            <p class="counter-sub">States Delivered To</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="story-section container">
+      <h3 class="story-title">Our Story</h3>
+      <div class="story-card">
+        <p class="story-text">
+          "We are tired of fake red drinks that taste like chemicals and chin chin that breaks like plastic."
+        </p>
+        <p class="story-text">
+          "We said no more."
+        </p>
+        <p class="story-text">
+          "We use sun-dried zobo leaves from the market, tiger nuts we peel by hand, fresh ginger that bites well, real spices — no shortcuts, no nonsense."
+        </p>
+        <p class="story-text">
+          "Because people in Lagos deserve real refreshment, not fake ones."
+        </p>
+        <p class="story-text bold-highlight">
+          "OA Drinks & Snacks — we're here, we're real, and we're staying."
+        </p>
+      </div>
+    </section>
+
+    <section id="about" class="about-bio-section glass-counter">
+      <div class="container">
+        <div class="bio-content">
+          <h3 class="bio-title">About OA Drinks & Snacks</h3>
+          <p class="bio-text">
+            Founded in Lagos in 2011, OA Drinks & Snacks set out to do one thing: bring honest, natural taste back to everyday refreshment.
+            No artificial colours, no fake sweetness, no shortcuts — just real hibiscus, real tiger nuts, real ginger and spices sourced fresh from local markets.
+            Over a decade later, we serve hundreds of homes and shops across Nigeria with the same care and quality that started it all.
+          </p>
+        </div>
+      </div>
+    </section>
+    <!-- ── How It Works ── -->
+    <section class="how-section section-padding container">
+      <h3 class="section-title centered-title">How to Order</h3>
+      <p class="how-subtitle">Three steps. No app. No signup. Just WhatsApp.</p>
+      <div class="how-steps">
+
+        <div class="how-step slide-in">
+          <div class="how-step-num">1</div>
+          <div class="how-step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          </div>
+          <h4 class="how-step-title">Pick Your Products</h4>
+          <p class="how-step-desc">Browse our shop page and add Zobo, Tiger Nut Milk, Chin Chin, or Kulikuli to your cart. Mix and match freely.</p>
+        </div>
+
+        <div class="how-connector" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </div>
+
+        <div class="how-step slide-in">
+          <div class="how-step-num">2</div>
+          <div class="how-step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>
+          </div>
+          <h4 class="how-step-title">Send via WhatsApp</h4>
+          <p class="how-step-desc">Tap "Complete Order" and your order details are pre-filled and sent directly to our team on WhatsApp — one tap, done.</p>
+        </div>
+
+        <div class="how-connector" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </div>
+
+        <div class="how-step slide-in">
+          <div class="how-step-num">3</div>
+          <div class="how-step-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </div>
+          <h4 class="how-step-title">Delivered to Your Door</h4>
+          <p class="how-step-desc">We confirm your delivery fee within 1 hour. Lagos same-day delivery available. Nationwide delivery across all 36 states.</p>
+        </div>
+
+      </div>
+      <div class="how-cta-wrap">
+        <a href="consumer.html" class="btn-primary ripple">Start Shopping</a>
+      </div>
+    </section>
+
+    <section class="section-padding container">
+      <h3 class="section-title centered-title">Stock Real, Sell More</h3>
+      <div class="path-cards">
+        <div class="vibe-card slide-in">
+          <div class="vibe-card-bg">
+            <img src="biz.png" alt="Wholesale Hub">
+          </div>
+          <div class="vibe-overlay"></div>
+          <div class="vibe-content">
+            <div class="icon-circle">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </div>
+            <h4>Wholesale Hub</h4>
+            <p>Stock your shop and make money with high-margin natural drinks.</p>
+            <a href="business.html" class="btn-path ripple">Get Wholesale Rates</a>
+          </div>
+        </div>
+
+        <div class="vibe-card slide-in">
+          <div class="vibe-card-bg">
+            <img src="dis.png" alt="Distributors">
+          </div>
+          <div class="vibe-overlay"></div>
+          <div class="vibe-content">
+            <div class="icon-circle">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+            </div>
+            <h4>Distributors</h4>
+            <p>Scale your business by becoming a regional OA primary partner.</p>
+            <a href="distributor.html" class="btn-path ripple">Become a Partner</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="reviews-section container">
+      <div class="review-count-badge">200+ happy customers</div>
+      <h3 class="section-title">What Lagos is Saying</h3>
+      <div class="testimonial-wrapper">
+        <div class="testimonial-slider">
+          <div class="testimonial-track" id="testimonial-track">
+            <div class="testimonial-card">
+              <div class="review-stars">★★★★★</div>
+              <p class="review-text">"This Zobo hits different — pure Lagos fire! Fresh and spicy every single time. 🔥"</p>
+              <p class="review-author">— Aisha, Sangotedo</p>
+            </div>
+            <div class="testimonial-card">
+              <div class="review-stars">★★★★★</div>
+              <p class="review-text">"The Chin Chin is perfectly spiced. My family finished a whole pack in minutes!"</p>
+              <p class="review-author">— Tunde, Lekki</p>
+            </div>
+            <div class="testimonial-card">
+              <div class="review-stars">★★★★★</div>
+              <p class="review-text">"Tiger Nut Milk is my new daily addiction. Naturally sweet and refreshing."</p>
+              <p class="review-author">— Funke, Ajah</p>
+            </div>
+            <div class="testimonial-card">
+              <div class="review-stars">★★★★★</div>
+              <p class="review-text">"Kulikuli pack is the real deal — spicy, crunchy, goes perfectly with cold zobo. We now order every week!"</p>
+              <p class="review-author">— Emeka, Surulere</p>
+            </div>
+          </div>
+        </div>
+        <div class="testimonial-dots" id="testimonial-dots">
+          <span class="t-dot active" data-index="0"></span>
+          <span class="t-dot" data-index="1"></span>
+          <span class="t-dot" data-index="2"></span>
+          <span class="t-dot" data-index="3"></span>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ── Social Proof ── -->
+    <section class="social-proof-section section-padding container" id="social">
+      <h3 class="section-title centered-title">Follow the Vibe</h3>
+      <p class="social-proof-sub">See what's fresh — tag us in your orders 🧃</p>
+
+      <div class="social-embeds-grid">
+
+        <!-- ── INSTAGRAM CARD ─────────────────────────────────────────── -->
+        <!--
+          PRODUCTION SWAP GUIDE — Instagram:
+          1. Open instagram.com/oa_drinks_and_snacks on desktop
+          2. Open any post → click ⋯ → "Embed" → copy the <blockquote> snippet
+          3. Replace the entire <div class="mock-ig-feed"> block below with that snippet
+          4. Remove the ig-mock-live attribute from the card div
+          The mock UI below is intentionally faithful to Instagram's embed frame
+          so there is zero layout shift when the real embed is dropped in.
+        -->
+        <div class="social-embed-card" ig-mock-live>
+          <div class="social-embed-header ig-header">
+            <div class="seh-left">
+              <div class="seh-avatar ig-gradient">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+              </div>
+              <div class="seh-meta">
+                <span class="seh-handle">oa_drinks_and_snacks</span>
+                <span class="seh-platform">Instagram</span>
+              </div>
+            </div>
+            <a href="https://instagram.com/oa_drinks_and_snacks" target="_blank" rel="noopener" class="seh-follow-btn ig-follow-btn" aria-label="Follow on Instagram">Follow</a>
+          </div>
+
+          <!-- Mock post feed — 3 post previews -->
+          <div class="mock-ig-feed">
+            <div class="mock-post">
+              <div class="mock-post-img ig-gradient-bg">
+                <img src="zobo.png" alt="Zobo post" loading="lazy">
+              </div>
+              <div class="mock-post-body">
+                <div class="mock-post-actions">
+                  <span class="mock-action">&#10084;&#65039; 142</span>
+                  <span class="mock-action">&#128172; 18</span>
+                  <span class="mock-action mock-share">&#128257;</span>
+                </div>
+                <p class="mock-post-caption"><strong>oa_drinks_and_snacks</strong> Cold zobo on a Lagos afternoon hits different 🔥 Pure hibiscus, fresh ginger — no chemicals, just real taste. <span class="mock-hashtag">#OADrinks</span> <span class="mock-hashtag">#NaturalNigeria</span></p>
+                <span class="mock-post-time">2 days ago</span>
+              </div>
+            </div>
+
+            <div class="mock-post">
+              <div class="mock-post-img">
+                <img src="chin.png" alt="Chin chin post" loading="lazy">
+              </div>
+              <div class="mock-post-body">
+                <div class="mock-post-actions">
+                  <span class="mock-action">&#10084;&#65039; 98</span>
+                  <span class="mock-action">&#128172; 11</span>
+                  <span class="mock-action mock-share">&#128257;</span>
+                </div>
+                <p class="mock-post-caption"><strong>oa_drinks_and_snacks</strong> Crunchy Chin Chin dropping this weekend 💪 1kg resealable bags. DM to order or tap the link in bio. <span class="mock-hashtag">#ChinChin</span> <span class="mock-hashtag">#MadeInLagos</span></p>
+                <span class="mock-post-time">5 days ago</span>
+              </div>
+            </div>
+
+            <div class="mock-post">
+              <div class="mock-post-img">
+                <img src="tigernut.png" alt="Tiger nut post" loading="lazy">
+              </div>
+              <div class="mock-post-body">
+                <div class="mock-post-actions">
+                  <span class="mock-action">&#10084;&#65039; 76</span>
+                  <span class="mock-action">&#128172; 9</span>
+                  <span class="mock-action mock-share">&#128257;</span>
+                </div>
+                <p class="mock-post-caption"><strong>oa_drinks_and_snacks</strong> Tiger Nut Milk — naturally sweet, zero preservatives. Your body will thank you 🥛 <span class="mock-hashtag">#TigerNut</span> <span class="mock-hashtag">#HealthyNigeria</span></p>
+                <span class="mock-post-time">1 week ago</span>
+              </div>
+            </div>
+          </div>
+
+          <a href="https://instagram.com/oa_drinks_and_snacks" target="_blank" rel="noopener" class="social-view-more ig-view-more">View profile on Instagram &rarr;</a>
+        </div>
+
+        <!-- ── FACEBOOK CARD ──────────────────────────────────────────── -->
+        <!--
+          PRODUCTION SWAP GUIDE — Facebook:
+          1. Go to developers.facebook.com/docs/plugins/page-plugin
+          2. Enter your Page URL: https://www.facebook.com/oadrinksandsnacks
+          3. Set width 400, height 500, check Timeline tab
+          4. Click Get Code and copy the <div class="fb-page"> block
+          5. Replace the <div class="mock-fb-page"> block below with that div
+          6. The FB SDK is already loaded in <head> — no extra script needed
+          7. Remove the fb-mock-live attribute from the card div
+        -->
+        <div class="social-embed-card" fb-mock-live>
+          <div class="social-embed-header fb-header">
+            <div class="seh-left">
+              <div class="seh-avatar fb-blue">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+              </div>
+              <div class="seh-meta">
+                <span class="seh-handle">OA Drinks &amp; Snacks</span>
+                <span class="seh-platform">Facebook Page</span>
+              </div>
+            </div>
+            <a href="https://facebook.com/oadrinksandsnacks" target="_blank" rel="noopener" class="seh-follow-btn fb-follow-btn" aria-label="Like on Facebook">Like Page</a>
+          </div>
+
+          <!-- Mock FB page timeline -->
+          <div class="mock-fb-page">
+            <div class="mock-fb-cover"></div>
+            <div class="mock-fb-profile-row">
+              <div class="mock-fb-avatar">
+                <img src="logo.png" alt="OA Drinks logo" loading="lazy">
+              </div>
+              <div class="mock-fb-page-info">
+                <span class="mock-fb-name">OA Drinks &amp; Snacks</span>
+                <span class="mock-fb-category">Food &amp; Beverage · Lagos</span>
+                <div class="mock-fb-likes">
+                  <span>&#128077; 1.2k likes</span>
+                  <span>&#128101; 1.4k followers</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="mock-fb-posts">
+              <div class="mock-fb-post">
+                <div class="mock-fb-post-header">
+                  <div class="mock-fb-post-avatar"></div>
+                  <div>
+                    <span class="mock-fb-post-name">OA Drinks &amp; Snacks</span>
+                    <span class="mock-fb-post-time">Yesterday at 10:32 AM ·&#127758;</span>
+                  </div>
+                </div>
+                <p class="mock-fb-post-text">Fresh batch of Zobo and Tiger Nut Milk is ready! 🥤 Order now via WhatsApp or visit our shop page. Lagos same-day delivery available. Link in bio.</p>
+                <div class="mock-fb-post-img">
+                  <img src="zobo.png" alt="Zobo batch" loading="lazy">
+                </div>
+                <div class="mock-fb-reactions">
+                  <span>&#128079; &#10084;&#65039; 47</span>
+                  <span>8 comments</span>
+                  <span>12 shares</span>
+                </div>
+              </div>
+
+              <div class="mock-fb-post">
+                <div class="mock-fb-post-header">
+                  <div class="mock-fb-post-avatar"></div>
+                  <div>
+                    <span class="mock-fb-post-name">OA Drinks &amp; Snacks</span>
+                    <span class="mock-fb-post-time">3 days ago ·&#127758;</span>
+                  </div>
+                </div>
+                <p class="mock-fb-post-text">Order 5 packs or more and get 10% off your entire cart 🎉 Mix Zobo, Chin Chin, Tiger Nut Milk — any combination counts. Tap below to shop!</p>
+                <div class="mock-fb-reactions">
+                  <span>&#128079; &#10084;&#65039; 31</span>
+                  <span>5 comments</span>
+                  <span>7 shares</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <a href="https://facebook.com/oadrinksandsnacks" target="_blank" rel="noopener" class="social-view-more fb-view-more">View Page on Facebook &rarr;</a>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="contact" class="section-padding container">
+      <h3 class="section-title">Let's Connect</h3>
+      <div class="contact-grid">
+        <a href="tel:08140226282" class="slim-contact-item slide-in ripple">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          <span>Call Us</span>
+        </a>
+        <a href="https://wa.me/2348140226282" class="slim-contact-item slide-in wa-accent ripple">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>
+          <span>WhatsApp</span>
+        </a>
+        <a href="/cdn-cgi/l/email-protection#640b0500160d0a0f17240309050d084a070b09" class="slim-contact-item slide-in ripple">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+          <span>Email</span>
+        </a>
+        <a href="https://instagram.com/oa_drinks_and_snacks" target="_blank" class="slim-contact-item slide-in ripple">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+          <span>Instagram</span>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <nav class="footer-nav">
+      <a href="consumer.html">Shop</a>
+      <a href="business.html">Wholesale</a>
+      <a href="distributor.html">Distributors</a>
+      <a href="#about">About</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <div class="footer-socials">
+      <a href="https://wa.me/2348140226282" class="footer-social-link wa-accent" aria-label="WhatsApp">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>
+      </a>
+      <a href="https://instagram.com/oa_drinks_and_snacks" target="_blank" class="footer-social-link" aria-label="Instagram">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+      </a>
+      <a href="tel:08140226282" class="footer-social-link" aria-label="Call us">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      </a>
+    </div>
+    <p class="footer-copy">© 2026 OA Drinks & Snacks · Lagos, Nigeria · Delivering nationwide</p>
+  </footer>
+
+  
+
+  <!-- Sticky shop pill — appears after hero scrolls away (UX #12) -->
+  <a id="sticky-shop-pill" href="consumer.html" class="sticky-shop-pill" aria-label="Shop now">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+    Shop Now
+  </a>
+
+  <script src="index.js" defer></script>
+</body>
+</html>
