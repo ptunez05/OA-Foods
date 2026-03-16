@@ -519,7 +519,7 @@ function loadSavedData() {
 
 // ── OA Sheets API ─────────────────────────────────────────────────────────────
 // IMPORTANT: Replace the URL below with YOUR actual Apps Script Web App URL
-var OA_API_URL = 'https://script.google.com/macros/s/AKfycbwGEiioGKBuCfiTdkM78nerNGEa8e_iu14UFNtvLPsmPlyR5WHvEIqTIY2SoDS_BV4/exec';
+var OA_API_URL = 'https://script.google.com/macros/s/AKfycbzPhQWpk6HJdzKX8sjXO1SkUMAMxygz7U8mBSQ9-rYTkct2C5-RRZ7LxP75ZvWwe15DFg/exec';
 
 function saveLeadToSheet(leadData) {
     // Silent background save — never blocks or breaks the WhatsApp flow
