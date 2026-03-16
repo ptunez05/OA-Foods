@@ -1,3 +1,5 @@
+var OA_API_URL = 'https://script.google.com/macros/s/AKfycbw9FhogzY47oLdZJXXngJC6izqnSilOgCSo6l3MYcGOKmWs1ZdYUkjCQK6oBr2_LTVnIQ/exec';
+
 let cart = {};
 let cartItems = {};
 const maxQty = 50; // Maximum quantity per product
@@ -139,7 +141,7 @@ function updateQty(productId, change, price, productName) {
 
     if (change > 0) {
         if (!cartItems[productId]) {
-            cartItems[productId] = { name: productName, price, quantity: 0 };
+            cartItems[productId] = { id: productId, name: productName, price, quantity: 0 };
         }
         cartItems[productId].quantity = newQty;
         cart[productId] = newQty;
@@ -285,45 +287,11 @@ function closeCheckoutModal() {
     });
 }
 
-// ── OA Sheets API ─────────────────────────────────────────────────────────────
-// IMPORTANT: Replace the URL below with YOUR actual Apps Script Web App URL
-var OA_API_URL = 'https://script.google.com/macros/s/AKfycbzPhQWpk6HJdzKX8sjXO1SkUMAMxygz7U8mBSQ9-rYTkct2C5-RRZ7LxP75ZvWwe15DFg/exec';
-
-function saveOrderToSheet(orderData) {
-    // Silent background save — never blocks or breaks the WhatsApp flow
-    try {
-        var payload = {
-            action: 'addOrder',
-            name: orderData.name,
-            phone: orderData.phone,
-            email: '',
-            state: orderData.state,
-            lga: orderData.lga,
-            address: orderData.address,
-            items: orderData.items,
-            subtotal: orderData.subtotal,
-            total: orderData.total,
-            type: 'consumer',
-            tracking: orderData.trackingId,
-            notes: ''
-        };
-        fetch(OA_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify(payload)
-        }).catch(function() {
-            // Silent fail — WhatsApp still opens regardless
-        });
-    } catch (e) {
-        // Silent fail — never interrupt the customer experience
-    }
-}
-
 function processWhatsAppOrder() {
     const confirmBtn = document.querySelector('.checkout-confirm-btn');
     if (confirmBtn) {
         confirmBtn.disabled = true;
-        confirmBtn.textContent = 'Preparing order…';
+        confirmBtn.textContent = 'Preparing order...';
     }
     const restoreBtn = () => {
         if (confirmBtn) {
@@ -337,6 +305,7 @@ function processWhatsAppOrder() {
     const name    = document.getElementById('form-name')?.value.trim() || '';
     const phone   = document.getElementById('form-phone')?.value.replace(/\s/g, '').trim() || '';
     const address = document.getElementById('form-address')?.value.trim() || '';
+    const referral = document.getElementById('form-referral')?.value || '';
     const sex     = conSelectedSex;
 
     if (!name) { showToast('Please enter your full name'); restoreBtn(); return; }
@@ -351,45 +320,57 @@ function processWhatsAppOrder() {
     let msg = `*New Order ${trackingID}*\n`;
     msg += `Date: ${new Date().toLocaleString()}\n\n`;
     msg += `*Customer Details:*\n`;
-    msg += `• Name: ${name}\n`;
-    msg += `• Phone: ${phone}\n`;
-    msg += `• Sex: ${sex}\n`;
-    msg += `• Address: ${address}, ${lga}, ${state}\n\n`;
+    msg += `Name: ${name}\n`;
+    msg += `Phone: ${phone}\n`;
+    msg += `Address: ${address}, ${lga}, ${state}\n\n`;
     msg += `*Items Ordered:*\n`;
 
     const { subtotal, total, discountApplied, zoboDiscount } = calculateTotal(cartItems);
+
+    // Build structured items array for automated stock deduction
+    var structuredItems = [];
     Object.values(cartItems).forEach(item => {
-        msg += `• ${item.name} × ${item.quantity} = ₦${(item.price * item.quantity).toLocaleString()}\n`;
+        msg += `${item.name} x ${item.quantity} = N${(item.price * item.quantity).toLocaleString()}\n`;
+        structuredItems.push({ id: item.id, name: item.name, qty: item.quantity });
     });
 
     if (discountApplied) {
-        msg += `\n*10% Zobo Bulk Discount Applied!*\n`;
-        msg += `Discount: −₦${zoboDiscount.toLocaleString()}\n`;
+        msg += `\n10% Zobo Bulk Discount Applied!\n`;
+        msg += `Discount: -N${zoboDiscount.toLocaleString()}\n`;
     }
-    msg += `\n*Total Amount: ₦${total.toLocaleString()}*\n\n`;
+    msg += `\nTotal Amount: N${total.toLocaleString()}\n\n`;
     msg += `Please confirm my delivery details and product availability. Thank you!`;
 
-    // Save order to Google Sheets BEFORE opening WhatsApp (silent — never blocks)
-    var itemsSummary = Object.values(cartItems).map(function(i) {
-        return i.name + ' x' + i.quantity;
-    }).join(', ');
-    saveOrderToSheet({
-        name: name,
-        phone: phone,
-        state: state,
-        lga: lga,
-        address: address,
-        items: itemsSummary,
-        subtotal: subtotal,
-        total: total,
-        trackingId: trackingID
-    });
+    // Save to Pending_Orders with structured items_json
+    try {
+        fetch(OA_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                action: 'addOrder',
+                name: name,
+                phone: phone,
+                email: '',
+                state: state,
+                lga: lga,
+                address: address,
+                items: JSON.stringify(structuredItems),
+                subtotal: subtotal,
+                total: total,
+                type: 'consumer',
+                tracking: trackingID,
+                referral_source: referral,
+                notes: ''
+            })
+        }).catch(function() {});
+    } catch(e) {}
 
     const waURL = `https://wa.me/2348140226282?text=${encodeURIComponent(msg)}`;
     const ctaBtn = document.getElementById('whatsapp-cta-btn');
     if (ctaBtn) ctaBtn.href = waURL;
 
     closeCheckoutModal();
+    hideCartBar();
     document.getElementById('success-modal').classList.add('active');
 }
 

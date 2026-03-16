@@ -1,3 +1,5 @@
+var OA_DIST_API_URL = 'https://script.google.com/macros/s/AKfycbw9FhogzY47oLdZJXXngJC6izqnSilOgCSo6l3MYcGOKmWs1ZdYUkjCQK6oBr2_LTVnIQ/exec';
+
 const nigerianData = {
     "Abia": ["Aba North", "Aba South", "Arochukwu", "Bende", "Ikwuano", "Isiala Ngwa North", "Isiala Ngwa South", "Isuikwuato", "Obi Ngwa", "Ohafia", "Osisioma", "Ugwunagbo", "Ukwa East", "Ukwa West", "Umuahia North", "Umuahia South", "Umunneochi"],
     "Adamawa": ["Demsa", "Fufure", "Ganye", "Gayuk", "Gombi", "Girei", "Hong", "Jada", "Lamurde", "Madagali", "Maiha", "Mayo Belwa", "Michika", "Mubi North", "Mubi South", "Numan", "Shelleng", "Song", "Toungo", "Yola North", "Yola South"],
@@ -257,38 +259,8 @@ function openApplyModal() {
 function closeApplyModal() {
     const modal = document.getElementById('apply-modal');
     if (modal) { modal.classList.remove('active'); modal.style.display = 'none'; }
-    const bar = document.getElementById('dist-bar');
-    if (bar) bar.classList.add('active');
-}
-
-// ── OA Sheets API ─────────────────────────────────────────────────────────────
-// IMPORTANT: Replace the URL below with YOUR actual Apps Script Web App URL
-var OA_API_URL = 'https://script.google.com/macros/s/AKfycbzPhQWpk6HJdzKX8sjXO1SkUMAMxygz7U8mBSQ9-rYTkct2C5-RRZ7LxP75ZvWwe15DFg/exec';
-
-function saveDistributorLead(leadData) {
-    // Silent background save — never blocks or breaks the WhatsApp flow
-    try {
-        var payload = {
-            action: 'addLead',
-            name: leadData.name,
-            phone: leadData.phone,
-            email: '',
-            bizName: '',
-            state: leadData.state,
-            type: 'distributor',
-            interest: 'Distributor — ' + leadData.qty + ' packs, Kit: ' + leadData.kit,
-            notes: leadData.notes
-        };
-        fetch(OA_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify(payload)
-        }).catch(function() {
-            // Silent fail — WhatsApp still opens regardless
-        });
-    } catch (e) {
-        // Silent fail — never interrupt the customer experience
-    }
+    // Note: dist-bar is NOT restored here.
+    // It is only restored after the full success flow completes (handleWAApplicationSend).
 }
 
 // ── Build & send WhatsApp application ───────────────────────────────────────
@@ -308,15 +280,26 @@ function processWhatsAppApplication() {
 
     saveData();
 
-    // Save distributor lead to Google Sheets BEFORE opening WhatsApp (silent — never blocks)
-    saveDistributorLead({
-        name: name,
-        phone: phone,
-        state: state,
-        qty: distQty,
-        kit: document.getElementById('kit-toggle').checked ? 'Yes' : 'No',
-        notes: comments || ''
-    });
+    // Save to Distributor_Clients sheet silently before WhatsApp opens
+    try {
+        fetch(OA_DIST_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                action: 'addLead',
+                name: name,
+                phone: phone,
+                email: '',
+                state: state,
+                lga: region,
+                type: 'distributor',
+                qty: distQty,
+                kit: document.getElementById('kit-toggle').checked ? 'Yes' : 'No',
+                referral_source: '',
+                notes: comments || ''
+            })
+        }).catch(function() {});
+    } catch(e) {}
 
     let msg = `*NEW DISTRIBUTOR APPLICATION: ${trackingID}*\n`;
     msg += `----------------------------------\n`;
@@ -336,8 +319,10 @@ function processWhatsAppApplication() {
     const ctaBtn = document.getElementById('wa-apply-btn');
     if (ctaBtn) ctaBtn.href = `https://wa.me/2348140226282?text=${encodeURIComponent(msg)}`;
 
-    // Close apply modal, show success
+    // Close apply modal — dist-bar is NOT restored here (fixed bug)
     closeApplyModal();
+    const distBar = document.getElementById('dist-bar');
+    if (distBar) { distBar.classList.remove('active'); }
     const successModal = document.getElementById('success-modal');
     if (successModal) { successModal.classList.add('active'); successModal.style.display = 'flex'; }
 }

@@ -9,7 +9,7 @@
 </head>
 <body>
 
-  <!-- ── LOGIN SCREEN ─────────────────────────────────────────────────── -->
+  <!-- LOGIN -->
   <div id="login-screen" class="login-screen">
     <div class="login-card">
       <div class="login-brand">
@@ -17,68 +17,61 @@
         <h1 class="login-title">Admin Panel</h1>
         <p class="login-sub">OA Drinks &amp; Snacks — Staff Only</p>
       </div>
-      <div class="login-form">
-        <label class="form-label">Password</label>
-        <input type="password" id="login-password" class="form-input" placeholder="Enter admin password" autocomplete="off"/>
-        <div id="login-error" class="login-error hidden">Incorrect password. Try again.</div>
-        <button class="btn-primary full-width" onclick="attemptLogin()">Sign In</button>
-      </div>
+      <label class="form-label">Password</label>
+      <input type="password" id="login-password" class="form-input" placeholder="Enter admin password"/>
+      <div id="login-error" class="login-error hidden">Incorrect password. Try again.</div>
+      <button class="btn-primary full-width" onclick="attemptLogin()">Sign In</button>
     </div>
   </div>
 
-  <!-- ── ADMIN SHELL (hidden until login) ─────────────────────────────── -->
+  <!-- ADMIN SHELL -->
   <div id="admin-shell" class="admin-shell hidden">
 
-    <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <span class="sb-logo">OA</span>
         <span class="sb-name">Admin</span>
       </div>
       <nav class="sidebar-nav">
-        <a href="#" class="nav-item active" data-section="dashboard" onclick="showSection('dashboard',this)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-          Dashboard
+        <a href="#" class="nav-item active" onclick="showSection('dashboard',this)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Dashboard
         </a>
-        <a href="#" class="nav-item" data-section="orders" onclick="showSection('orders',this)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-          Orders
+        <a href="#" class="nav-item" onclick="showSection('orders',this)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>Orders
           <span class="nav-badge" id="badge-orders">0</span>
         </a>
-        <a href="#" class="nav-item" data-section="products" onclick="showSection('products',this)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-          Products
+        <a href="#" class="nav-item" onclick="showSection('products',this)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Products
         </a>
-        <a href="#" class="nav-item" data-section="leads" onclick="showSection('leads',this)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Leads
-          <span class="nav-badge" id="badge-leads">0</span>
+        <a href="#" class="nav-item" onclick="showSection('inventory',this)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Inventory
         </a>
-        <a href="#" class="nav-item" data-section="customers" onclick="showSection('customers',this)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          Customers
+        <a href="#" class="nav-item" onclick="showSection('clients',this)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Clients
+          <span class="nav-badge" id="badge-clients">0</span>
         </a>
-        <a href="#" class="nav-item" data-section="finance" onclick="showSection('finance',this)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          Finance
+        <a href="#" class="nav-item" onclick="showSection('customers',this)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Customers
+        </a>
+        <a href="#" class="nav-item" onclick="showSection('finance',this)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Finance
         </a>
       </nav>
       <button class="logout-btn" onclick="logout()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        Sign Out
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Sign Out
       </button>
     </aside>
 
-    <!-- Top bar (mobile) -->
     <div class="topbar">
       <button class="menu-toggle" onclick="toggleSidebar()">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
       <span class="topbar-title" id="topbar-title">Dashboard</span>
-      <span class="topbar-user">Admin</span>
+      <button class="btn-copy-dash" onclick="copyDashboardReport()" title="Copy report">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy Report
+      </button>
     </div>
 
-    <!-- Main content -->
     <main class="main-content">
 
       <!-- DASHBOARD -->
@@ -87,40 +80,47 @@
           <h2>Dashboard</h2>
           <button class="btn-ghost" onclick="loadDashboard()">Refresh</button>
         </div>
-        <div class="metrics-grid" id="metrics-grid">
-          <div class="metric-card pending">
-            <div class="metric-value" id="m-pending">—</div>
-            <div class="metric-label">Pending Orders</div>
+
+        <!-- ALERTS ROW -->
+        <div id="dash-alerts"></div>
+
+        <!-- MONEY METRICS -->
+        <div class="dash-group-label">This Month</div>
+        <div class="metrics-grid" id="metrics-money"></div>
+
+        <!-- TARGET PROGRESS BAR -->
+        <div class="target-bar-wrap" id="target-bar-wrap">
+          <div class="target-bar-header">
+            <span id="target-bar-label">Monthly Target Progress</span>
+            <span id="target-bar-pct">0%</span>
           </div>
-          <div class="metric-card confirmed">
-            <div class="metric-value" id="m-confirmed">—</div>
-            <div class="metric-label">Confirmed Orders</div>
+          <div class="target-bar-track">
+            <div class="target-bar-fill" id="target-bar-fill" style="width:0%"></div>
           </div>
-          <div class="metric-card revenue">
-            <div class="metric-value" id="m-revenue">—</div>
-            <div class="metric-label">Total Revenue</div>
-          </div>
-          <div class="metric-card profit">
-            <div class="metric-value" id="m-profit">—</div>
-            <div class="metric-label">Net Profit</div>
-          </div>
-          <div class="metric-card customers">
-            <div class="metric-value" id="m-customers">—</div>
-            <div class="metric-label">Customers</div>
-          </div>
-          <div class="metric-card leads">
-            <div class="metric-value" id="m-leads">—</div>
-            <div class="metric-label">New Leads</div>
-          </div>
-          <div class="metric-card stock">
-            <div class="metric-value" id="m-stock">—</div>
-            <div class="metric-label">Low Stock Items</div>
-          </div>
-          <div class="metric-card failed">
-            <div class="metric-value" id="m-failed">—</div>
-            <div class="metric-label">Failed Orders</div>
-          </div>
+          <div class="target-bar-sub" id="target-bar-sub"></div>
         </div>
+
+        <!-- INVENTORY HEALTH -->
+        <div class="dash-group-label">Inventory Health</div>
+        <div class="metrics-grid" id="metrics-inventory"></div>
+
+        <!-- LOW STOCK TABLE -->
+        <div id="low-stock-panel"></div>
+
+        <!-- CHARTS ROW -->
+        <div class="dash-group-label">6-Month Revenue Trend</div>
+        <div class="chart-card" id="revenue-chart-card">
+          <div class="bar-chart" id="revenue-bar-chart"></div>
+        </div>
+
+        <div class="dash-group-label">Top Products This Period</div>
+        <div class="chart-card" id="products-chart-card">
+          <div class="bar-chart horizontal" id="products-bar-chart"></div>
+        </div>
+
+        <!-- PIPELINE + DELIVERY COUNTS -->
+        <div class="dash-group-label">Operations</div>
+        <div class="metrics-grid" id="metrics-ops"></div>
       </section>
 
       <!-- ORDERS -->
@@ -133,9 +133,7 @@
             <button class="tab" onclick="switchOrderTab('failed',this)">Failed</button>
           </div>
         </div>
-        <div id="orders-content">
-          <div class="loading-state">Loading orders...</div>
-        </div>
+        <div id="orders-content"><div class="loading-state">Loading...</div></div>
       </section>
 
       <!-- PRODUCTS -->
@@ -144,23 +142,36 @@
           <h2>Products</h2>
           <button class="btn-primary" onclick="openProductModal(null)">+ Add Product</button>
         </div>
-        <div id="products-content">
-          <div class="loading-state">Loading products...</div>
-        </div>
+        <div id="products-content"><div class="loading-state">Loading...</div></div>
       </section>
 
-      <!-- LEADS -->
-      <section id="section-leads" class="section hidden">
+      <!-- INVENTORY -->
+      <section id="section-inventory" class="section hidden">
         <div class="section-header">
-          <h2>Leads</h2>
-          <div class="tab-row">
-            <button class="tab active" onclick="switchLeadTab('wholesale',this)">Wholesale</button>
-            <button class="tab" onclick="switchLeadTab('distributor',this)">Distributors</button>
+          <h2>Inventory</h2>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-ghost" onclick="switchInvTab('log',this)">Stock Log</button>
+            <button class="btn-primary" onclick="openBatchModal()">+ New Batch</button>
           </div>
         </div>
-        <div id="leads-content">
-          <div class="loading-state">Loading leads...</div>
+        <div class="tab-row" style="margin-bottom:16px;">
+          <button class="tab active" onclick="switchInvTab('stock',this)">Current Stock</button>
+          <button class="tab" onclick="switchInvTab('batches',this)">Batches</button>
+          <button class="tab" onclick="switchInvTab('log',this)">Change Log</button>
         </div>
+        <div id="inventory-content"><div class="loading-state">Loading...</div></div>
+      </section>
+
+      <!-- CLIENTS -->
+      <section id="section-clients" class="section hidden">
+        <div class="section-header">
+          <h2>Clients</h2>
+          <div class="tab-row">
+            <button class="tab active" onclick="switchClientTab('business',this)">Wholesale</button>
+            <button class="tab" onclick="switchClientTab('distributor',this)">Distributors</button>
+          </div>
+        </div>
+        <div id="clients-content"><div class="loading-state">Loading...</div></div>
       </section>
 
       <!-- CUSTOMERS -->
@@ -169,9 +180,7 @@
           <h2>Customers</h2>
           <button class="btn-ghost" onclick="loadCustomers()">Refresh</button>
         </div>
-        <div id="customers-content">
-          <div class="loading-state">Loading customers...</div>
-        </div>
+        <div id="customers-content"><div class="loading-state">Loading...</div></div>
       </section>
 
       <!-- FINANCE -->
@@ -180,42 +189,36 @@
           <h2>Finance</h2>
           <button class="btn-primary" onclick="openFinanceModal()">+ Log Entry</button>
         </div>
-        <div id="finance-summary" class="finance-summary-row"></div>
-        <div id="finance-content">
-          <div class="loading-state">Loading finance data...</div>
-        </div>
+        <div id="finance-summary"></div>
+        <div id="finance-content"><div class="loading-state">Loading...</div></div>
       </section>
 
     </main>
   </div>
 
-  <!-- ── MODALS ──────────────────────────────────────────────────────────── -->
-
-  <!-- Fail Order Modal -->
+  <!-- MODALS -->
   <div id="fail-modal" class="modal-overlay hidden">
     <div class="modal-card">
       <h3 class="modal-title">Mark Order as Failed</h3>
-      <p class="modal-sub">Please note the reason so you can track patterns.</p>
       <input type="hidden" id="fail-order-id"/>
       <label class="form-label">Reason</label>
       <select class="form-input" id="fail-reason-select" onchange="handleFailReasonChange()">
         <option value="">Select a reason</option>
         <option value="Customer did not send WhatsApp message">Did not send WhatsApp</option>
-        <option value="Customer cancelled after sending message">Cancelled after messaging</option>
+        <option value="Customer cancelled after messaging">Cancelled after messaging</option>
         <option value="Wrong phone number or unreachable">Wrong number / unreachable</option>
         <option value="Out of stock at time of order">Out of stock</option>
         <option value="Duplicate order">Duplicate order</option>
-        <option value="Other">Other (type below)</option>
+        <option value="Other">Other</option>
       </select>
-      <input type="text" id="fail-reason-other" class="form-input hidden" placeholder="Describe the reason..."/>
+      <input type="text" id="fail-reason-other" class="form-input hidden" placeholder="Describe reason..."/>
       <div class="modal-actions">
-        <button class="btn-ghost" onclick="closeFailModal()">Cancel</button>
+        <button class="btn-ghost" onclick="closeModal('fail-modal')">Cancel</button>
         <button class="btn-danger" onclick="submitFailOrder()">Mark as Failed</button>
       </div>
     </div>
   </div>
 
-  <!-- Product Modal -->
   <div id="product-modal" class="modal-overlay hidden">
     <div class="modal-card">
       <h3 class="modal-title" id="product-modal-title">Add Product</h3>
@@ -223,80 +226,121 @@
       <label class="form-label">Product Name</label>
       <input type="text" id="pm-name" class="form-input" placeholder="e.g. Zobo Power Pack"/>
       <label class="form-label">Category</label>
-      <select id="pm-category" class="form-input">
-        <option value="Drinks">Drinks</option>
-        <option value="Snacks">Snacks</option>
-      </select>
+      <select id="pm-category" class="form-input"><option>Drinks</option><option>Snacks</option></select>
       <label class="form-label">Consumer Price (NGN)</label>
-      <input type="number" id="pm-price-consumer" class="form-input" placeholder="e.g. 1500"/>
+      <input type="number" id="pm-price-consumer" class="form-input"/>
+      <label class="form-label">Retail Price (NGN)</label>
+      <input type="number" id="pm-price-retail" class="form-input"/>
       <label class="form-label">Wholesale Price (NGN)</label>
-      <input type="number" id="pm-price-wholesale" class="form-input" placeholder="e.g. 1100"/>
-      <label class="form-label">Stock Quantity</label>
-      <input type="number" id="pm-stock" class="form-input" placeholder="e.g. 50"/>
+      <input type="number" id="pm-price-wholesale" class="form-input"/>
+      <label class="form-label">Cost Price / Unit (NGN)</label>
+      <input type="number" id="pm-cost" class="form-input" placeholder="What it costs you to make"/>
+      <label class="form-label">Stock Qty</label>
+      <input type="number" id="pm-stock" class="form-input"/>
+      <label class="form-label">Low Stock Alert Level</label>
+      <input type="number" id="pm-threshold" class="form-input" placeholder="e.g. 20"/>
       <label class="form-label">Image Filename</label>
       <input type="text" id="pm-image" class="form-input" placeholder="e.g. zobo.png"/>
       <label class="form-label">Description</label>
-      <input type="text" id="pm-description" class="form-input" placeholder="Short product description"/>
+      <input type="text" id="pm-description" class="form-input"/>
       <div class="modal-actions">
-        <button class="btn-ghost" onclick="closeProductModal()">Cancel</button>
+        <button class="btn-ghost" onclick="closeModal('product-modal')">Cancel</button>
         <button class="btn-primary" onclick="submitProduct()">Save Product</button>
       </div>
     </div>
   </div>
 
-  <!-- Finance Modal -->
+  <div id="batch-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h3 class="modal-title">Log New Production Batch</h3>
+      <label class="form-label">Product</label>
+      <select id="bm-product" class="form-input"></select>
+      <label class="form-label">Qty Produced</label>
+      <input type="number" id="bm-qty" class="form-input" placeholder="e.g. 50"/>
+      <label class="form-label">Expiry Date</label>
+      <input type="date" id="bm-expiry" class="form-input"/>
+      <label class="form-label">Batch Note</label>
+      <input type="text" id="bm-note" class="form-input" placeholder="Optional notes"/>
+      <div class="modal-actions">
+        <button class="btn-ghost" onclick="closeModal('batch-modal')">Cancel</button>
+        <button class="btn-primary" onclick="submitBatch()">Save Batch</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="delivery-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h3 class="modal-title">Update Delivery Status</h3>
+      <input type="hidden" id="dm-order-id"/>
+      <label class="form-label">Status</label>
+      <select id="dm-status" class="form-input">
+        <option value="pending_delivery">Pending Delivery</option>
+        <option value="shipped">Shipped / Out for Delivery</option>
+        <option value="delivered">Delivered</option>
+      </select>
+      <label class="form-label">Delivery Note (optional)</label>
+      <input type="text" id="dm-notes" class="form-input" placeholder="e.g. Left with security"/>
+      <div class="modal-actions">
+        <button class="btn-ghost" onclick="closeModal('delivery-modal')">Cancel</button>
+        <button class="btn-primary" onclick="submitDeliveryStatus()">Update</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="client-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h3 class="modal-title">Update Client</h3>
+      <input type="hidden" id="cm-id"/>
+      <input type="hidden" id="cm-type"/>
+      <label class="form-label">Pipeline Stage</label>
+      <select id="cm-stage" class="form-input">
+        <option value="enquiry">Enquiry</option>
+        <option value="negotiation">Negotiation</option>
+        <option value="active">Active Client</option>
+        <option value="lost">Lost</option>
+        <option value="applicant">Applicant</option>
+        <option value="vetting">Under Vetting</option>
+        <option value="signed">Signed Partner</option>
+        <option value="inactive">Inactive</option>
+      </select>
+      <label class="form-label">Follow-up Date</label>
+      <input type="date" id="cm-followup" class="form-input"/>
+      <label class="form-label">Notes</label>
+      <input type="text" id="cm-notes" class="form-input"/>
+      <div class="modal-actions">
+        <button class="btn-ghost" onclick="closeModal('client-modal')">Cancel</button>
+        <button class="btn-primary" onclick="submitClientUpdate()">Update</button>
+      </div>
+    </div>
+  </div>
+
   <div id="finance-modal" class="modal-overlay hidden">
     <div class="modal-card">
       <h3 class="modal-title">Log Finance Entry</h3>
       <label class="form-label">Month (YYYY-MM)</label>
       <input type="text" id="fm-month" class="form-input" placeholder="e.g. 2026-03"/>
       <label class="form-label">Product Name</label>
-      <input type="text" id="fm-product" class="form-input" placeholder="e.g. Zobo Power Pack"/>
+      <input type="text" id="fm-product" class="form-input"/>
       <label class="form-label">Units Sold</label>
-      <input type="number" id="fm-units" class="form-input" placeholder="e.g. 30"/>
+      <input type="number" id="fm-units" class="form-input" oninput="updateFinancePreview()"/>
       <label class="form-label">Unit Cost Price (NGN)</label>
-      <input type="number" id="fm-cost" class="form-input" placeholder="What you paid per unit"/>
+      <input type="number" id="fm-cost" class="form-input" oninput="updateFinancePreview()"/>
       <label class="form-label">Unit Sale Price (NGN)</label>
-      <input type="number" id="fm-sale" class="form-input" placeholder="What you sold per unit"/>
+      <input type="number" id="fm-sale" class="form-input" oninput="updateFinancePreview()"/>
       <label class="form-label">Spoilage / Damage Units</label>
-      <input type="number" id="fm-spoilage" class="form-input" placeholder="Units lost (0 if none)"/>
-      <label class="form-label">Notes (optional)</label>
-      <input type="text" id="fm-notes" class="form-input" placeholder="Any extra notes"/>
-      <div class="finance-preview" id="finance-preview"></div>
+      <input type="number" id="fm-spoilage" class="form-input" value="0" oninput="updateFinancePreview()"/>
+      <label class="form-label">Notes</label>
+      <input type="text" id="fm-notes" class="form-input"/>
+      <div class="finance-preview hidden" id="finance-preview"></div>
       <div class="modal-actions">
-        <button class="btn-ghost" onclick="closeFinanceModal()">Cancel</button>
+        <button class="btn-ghost" onclick="closeModal('finance-modal')">Cancel</button>
         <button class="btn-primary" onclick="submitFinanceEntry()">Save Entry</button>
       </div>
     </div>
   </div>
 
-  <!-- Lead Status Modal -->
-  <div id="lead-modal" class="modal-overlay hidden">
-    <div class="modal-card">
-      <h3 class="modal-title">Update Lead</h3>
-      <input type="hidden" id="lm-id"/>
-      <input type="hidden" id="lm-type"/>
-      <label class="form-label">Status</label>
-      <select id="lm-status" class="form-input">
-        <option value="new">New</option>
-        <option value="contacted">Contacted</option>
-        <option value="converted">Converted</option>
-        <option value="dead">Dead Lead</option>
-      </select>
-      <label class="form-label">Follow-up Date</label>
-      <input type="date" id="lm-followup" class="form-input"/>
-      <label class="form-label">Notes</label>
-      <input type="text" id="lm-notes" class="form-input" placeholder="Add a note about this lead"/>
-      <div class="modal-actions">
-        <button class="btn-ghost" onclick="closeLeadModal()">Cancel</button>
-        <button class="btn-primary" onclick="submitLeadUpdate()">Update Lead</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Toast -->
   <div id="admin-toast" class="admin-toast hidden"></div>
-
-  <script src="admin.js"></script>
+  <script src="admin1.js"></script>
+  <script src="admin2.js"></script>
 </body>
 </html>

@@ -1,3 +1,5 @@
+var OA_BIZ_API_URL = 'https://script.google.com/macros/s/AKfycbw9FhogzY47oLdZJXXngJC6izqnSilOgCSo6l3MYcGOKmWs1ZdYUkjCQK6oBr2_LTVnIQ/exec';
+
 const bizLocationData = {
     "Abia": ["Aba North", "Aba South", "Arochukwu", "Bende", "Ikwuano", "Isiala Ngwa North", "Isiala Ngwa South", "Isuikwuato", "Obi Ngwa", "Ohafia", "Osisioma", "Ugwunagbo", "Ukwa East", "Ukwa West", "Umuahia North", "Umuahia South", "Umunneochi"],
     "Adamawa": ["Demsa", "Fufure", "Ganye", "Gayuk", "Gombi", "Girei", "Hong", "Jada", "Lamurde", "Madagali", "Maiha", "Mayo Belwa", "Michika", "Mubi North", "Mubi South", "Numan", "Shelleng", "Song", "Toungo", "Yola North", "Yola South"],
@@ -517,36 +519,6 @@ function loadSavedData() {
     }
 }
 
-// ── OA Sheets API ─────────────────────────────────────────────────────────────
-// IMPORTANT: Replace the URL below with YOUR actual Apps Script Web App URL
-var OA_API_URL = 'https://script.google.com/macros/s/AKfycbzPhQWpk6HJdzKX8sjXO1SkUMAMxygz7U8mBSQ9-rYTkct2C5-RRZ7LxP75ZvWwe15DFg/exec';
-
-function saveLeadToSheet(leadData) {
-    // Silent background save — never blocks or breaks the WhatsApp flow
-    try {
-        var payload = {
-            action: 'addLead',
-            name: leadData.name,
-            phone: leadData.phone,
-            email: '',
-            bizName: leadData.shopName,
-            state: leadData.state,
-            type: 'wholesale',
-            interest: leadData.interest,
-            notes: leadData.notes
-        };
-        fetch(OA_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify(payload)
-        }).catch(function() {
-            // Silent fail — WhatsApp still opens regardless
-        });
-    } catch (e) {
-        // Silent fail — never interrupt the customer experience
-    }
-}
-
 window.processWhatsAppOrder = function() {
     const confirmBtn = document.querySelector('.checkout-confirm-btn');
     if (confirmBtn) {
@@ -601,27 +573,31 @@ window.processWhatsAppOrder = function() {
 
     try {
         localStorage.setItem('oa_biz_user', JSON.stringify({
-            shopName,
-            address,
-            phone,
-            contactPerson,
-            preferredDate,
-            comments,
-            state,
-            lga: lga,
-            sex: bizSelectedSex
+            shopName, address, phone, contactPerson,
+            preferredDate, comments, state, lga: lga, sex: bizSelectedSex
         }));
     } catch (e) {}
 
-    // Save wholesale lead to Google Sheets BEFORE opening WhatsApp (silent — never blocks)
-    saveLeadToSheet({
-        name: contactPerson || shopName || 'Unknown',
-        phone: phone,
-        shopName: shopName,
-        state: state,
-        interest: (selectedTier === 'retailer' ? 'Retailer' : 'Wholesale') + ' — ' + currentQty + ' packs',
-        notes: comments || ''
-    });
+    // Save to Business_Clients sheet silently before WhatsApp opens
+    try {
+        fetch(OA_BIZ_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                action: 'addLead',
+                name: contactPerson || shopName || 'Unknown',
+                phone: phone,
+                email: '',
+                bizName: shopName,
+                state: state,
+                lga: lga,
+                type: selectedTier === 'retailer' ? 'retailer' : 'wholesale',
+                interest: (selectedTier === 'retailer' ? 'Retailer' : 'Wholesale') + ' - ' + currentQty + ' packs @ N' + (currentQty * pricePerPack).toLocaleString(),
+                referral_source: '',
+                notes: comments || ''
+            })
+        }).catch(function() {});
+    } catch(e) {}
 
     const waURL = `https://wa.me/2348140226282?text=${encodeURIComponent(msg)}`;
     const ctaBtn = document.getElementById('whatsapp-cta-btn');
@@ -629,8 +605,10 @@ window.processWhatsAppOrder = function() {
 
     const checkoutModal = document.getElementById('checkout-modal');
     const successModal  = document.getElementById('success-modal');
+    const bizBar = document.getElementById('biz-bar');
     if (checkoutModal) { checkoutModal.classList.remove('active'); checkoutModal.style.display = 'none'; }
-    if (successModal)  { successModal.classList.add('active');     successModal.style.display  = 'flex'; }
+    if (bizBar) { bizBar.classList.remove('active'); }
+    if (successModal)  { successModal.classList.add('active'); successModal.style.display = 'flex'; }
 }
 
 window.handleWhatsAppSend = function() {
