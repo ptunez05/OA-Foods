@@ -1,674 +1,597 @@
-// OA Admin Panel - admin.js
-// Wired to Apps Script backend v2.0
+// OA Shop Book — admin.js  v3.3 Final
+// Auth, navigation, API, Shop Today, Sales & Orders, Offline Queue
 
-var API = 'https://script.google.com/macros/s/AKfycbzPhQWpk6HJdzKX8sjXO1SkUMAMxygz7U8mBSQ9-rYTkct2C5-RRZ7LxP75ZvWwe15DFg/exec';
+var API = 'https://script.google.com/macros/s/AKfycbzBsrATkHIq6v4TtiFXsXEBxPbdHSpmDwp10a0LavYJnnMa12BMHNLbsnhO2rQtCwdOGw/exec';
+var SESSION_KEY       = 'oa_sb_session';
+var SESSION_TIMEOUT   = 14400000; // 4 hours
+var OFFLINE_QUEUE_KEY = 'oa_sb_offline_queue';
 
-var currentOrderTab = 'pending';
-var currentLeadTab  = 'wholesale';
-var allProducts     = [];
+var APP = {
+  role:'', name:'', pulseData:null,
+  currentOrderTab:'pending', currentPeopleTab:'retail',
+  currentStockTab:'levels', currentSettingsTab:'general',
+  allProducts:[], openDrawer:''
+};
 
-// ── AUTH ─────────────────────────────────────────────────────────────────────
+// ── AUTH ──────────────────────────────────────────────────────────────────────
 
-function attemptLogin() {
-  var pw = document.getElementById('login-password').value.trim();
-  var err = document.getElementById('login-error');
-  if (!pw) { err.classList.remove('hidden'); err.textContent = 'Please enter your password.'; return; }
-  call('getSettings').then(function(res) {
-    if (!res.success) { showError('Could not reach server. Check your connection.'); return; }
-    var stored = String(res.data.admin_password || '');
-    if (pw === stored) {
-      sessionStorage.setItem('oa_admin_auth', 'yes');
-      document.getElementById('login-screen').classList.add('hidden');
-      document.getElementById('admin-shell').classList.remove('hidden');
-      loadDashboard();
+document.addEventListener('DOMContentLoaded', function() {
+  var saved = getSavedSession();
+  if (saved) { APP.role=saved.role; APP.name=saved.name; bootApp(); }
+  var pw = document.getElementById('login-pw');
+  if (pw) pw.addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+  var theme = localStorage.getItem('oa_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', theme);
+  updateThemeBtn(theme);
+  initOfflineHandling();
+  initChartStates();
+});
+
+function getSavedSession() {
+  try {
+    var s = JSON.parse(sessionStorage.getItem(SESSION_KEY)||'null');
+    if (!s) return null;
+    if (Date.now()-s.ts > SESSION_TIMEOUT) { sessionStorage.removeItem(SESSION_KEY); return null; }
+    return s;
+  } catch(e) { return null; }
+}
+
+function doLogin() {
+  var btn=document.getElementById('login-btn'), txt=document.getElementById('login-btn-text');
+  var err=document.getElementById('login-err'), pw=document.getElementById('login-pw').value.trim();
+  if (!pw) return;
+  err.classList.add('hidden'); btn.disabled=true; txt.textContent='Checking…';
+  call('login',{password:pw}).then(function(res){
+    if (res.success) {
+      APP.role=res.role; APP.name=res.name;
+      sessionStorage.setItem(SESSION_KEY,JSON.stringify({role:res.role,name:res.name,ts:Date.now()}));
+      bootApp();
     } else {
-      err.classList.remove('hidden');
-      err.textContent = 'Incorrect password. Try again.';
+      err.classList.remove('hidden'); err.textContent=res.message||'Wrong password. Try again.';
+      btn.disabled=false; txt.textContent='Sign In';
     }
-  }).catch(function() {
-    showError('Connection failed. Please check your internet and try again.');
+  }).catch(function(){
+    err.classList.remove('hidden'); err.textContent='Could not connect. Check your internet.';
+    btn.disabled=false; txt.textContent='Sign In';
   });
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-  if (sessionStorage.getItem('oa_admin_auth') === 'yes') {
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('admin-shell').classList.remove('hidden');
-    loadDashboard();
-  }
-  var pwInput = document.getElementById('login-password');
-  if (pwInput) {
-    pwInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') { attemptLogin(); }
-    });
-  }
-});
+function bootApp() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('sb-role').textContent = APP.role==='master'?'Full Admin':APP.name||'Staff';
+  if (APP.role!=='master') document.querySelectorAll('.master-only').forEach(function(el){ el.style.display='none'; });
+  var av=document.getElementById('greeting-avatar');
+  if (av&&APP.name) av.textContent=initials(APP.name);
+  loadToday();
+  refreshSessionTimer();
+}
 
-function logout() {
-  sessionStorage.removeItem('oa_admin_auth');
-  document.getElementById('admin-shell').classList.add('hidden');
+function doLogout() {
+  sessionStorage.removeItem(SESSION_KEY); APP.role=''; APP.name='';
+  document.getElementById('app').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
-  document.getElementById('login-password').value = '';
+  document.getElementById('login-pw').value='';
+  document.getElementById('login-err').classList.add('hidden');
+  var sb=document.getElementById('sidebar'); if(sb) sb.classList.remove('open');
+  var mn=document.getElementById('bn-more-menu'); if(mn) mn.classList.remove('open');
+}
+
+function refreshSessionTimer() {
+  ['click','scroll','keydown','input','touchstart'].forEach(function(evt){
+    var opts=(evt==='scroll'||evt==='touchstart')?{passive:true}:false;
+    document.addEventListener(evt,function(){
+      var s=getSavedSession();
+      if(s){s.ts=Date.now();sessionStorage.setItem(SESSION_KEY,JSON.stringify(s));}
+    },opts);
+  });
+}
+
+// ── THEME ─────────────────────────────────────────────────────────────────────
+
+function toggleTheme() {
+  var cur=document.documentElement.getAttribute('data-theme')||'light';
+  var next=cur==='light'?'dark':'light';
+  document.documentElement.setAttribute('data-theme',next);
+  localStorage.setItem('oa_theme',next); updateThemeBtn(next);
+}
+function updateThemeBtn(theme) {
+  var btn=document.getElementById('theme-btn');
+  if(btn) btn.textContent=theme==='light'?'🌙':'☀️';
 }
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
 
-function showSection(name, el) {
-  document.querySelectorAll('.section').forEach(function(s) {
-    s.classList.remove('active');
-    s.classList.add('hidden');
+function goto(name,el) {
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); p.classList.add('hidden'); });
+  document.querySelectorAll('.sb-link').forEach(function(l){ l.classList.remove('active'); });
+  document.querySelectorAll('.bn-tab').forEach(function(b){ b.classList.remove('active'); });
+  var page=document.getElementById('page-'+name);
+  if(page){page.classList.remove('hidden');page.classList.add('active');}
+  if(el) el.classList.add('active');
+  var titles={today:'Shop Today',orders:'Sales & Orders',items:'Items in Shop',
+    stock:'My Stock',people:'People Asking',customers:'My Customers',
+    money:'Money Records',settings:'Shop Settings'};
+  var tb=document.getElementById('tb-title'); if(tb) tb.textContent=titles[name]||name;
+  var sb=document.getElementById('sidebar'); if(sb) sb.classList.remove('open');
+  updateBottomNavForPage(name);
+  if(name==='today')     loadToday();
+  if(name==='orders')    loadOrders('pending');
+  if(name==='items')     loadItems();
+  if(name==='stock')     loadStock('levels');
+  if(name==='people')    loadPeople('retail');
+  if(name==='customers') loadCustomers();
+  if(name==='money')     loadMoney();
+  if(name==='settings')  loadSettings('general');
+}
+function toggleSidebar(){ var s=document.getElementById('sidebar'); if(s) s.classList.toggle('open'); }
+function updateBottomNavForPage(name){
+  var map={today:0,orders:1,items:2,people:3}; if(map[name]!==undefined) updateBottomNav(map[name]);
+}
+function updateBottomNav(idx){
+  document.querySelectorAll('.bn-tab').forEach(function(tab,i){
+    if(i===idx) tab.classList.add('active'); else if(i<4) tab.classList.remove('active');
   });
-  document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
-  var sec = document.getElementById('section-' + name);
-  if (sec) { sec.classList.remove('hidden'); sec.classList.add('active'); }
-  if (el)  { el.classList.add('active'); }
-  document.getElementById('topbar-title').textContent =
-    name.charAt(0).toUpperCase() + name.slice(1);
-  document.getElementById('sidebar').classList.remove('open');
-  if (name === 'dashboard')  { loadDashboard(); }
-  if (name === 'orders')     { loadOrders('pending'); }
-  if (name === 'products')   { loadProducts(); }
-  if (name === 'leads')      { loadLeads('wholesale'); }
-  if (name === 'customers')  { loadCustomers(); }
-  if (name === 'finance')    { loadFinance(); }
 }
+function toggleMoreMenu(){ var m=document.getElementById('bn-more-menu'); if(m) m.classList.toggle('open'); }
 
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
+// ── OFFLINE QUEUE ─────────────────────────────────────────────────────────────
+
+function initOfflineHandling(){
+  window.addEventListener('online', function(){ showOfflineStatus(false); drainQueue(); });
+  window.addEventListener('offline',function(){ showOfflineStatus(true); });
+  if(!navigator.onLine) showOfflineStatus(true);
 }
-
-// ── API HELPER ────────────────────────────────────────────────────────────────
-
-function call(action, params) {
-  var body = Object.assign({ action: action }, params || {});
-  return fetch(API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify(body)
-  }).then(function(r) { return r.json(); });
+function showOfflineStatus(isOffline){
+  var el=document.getElementById('offline-indicator'); if(!el) return;
+  if(isOffline) el.classList.remove('hidden'); else el.classList.add('hidden');
 }
-
-// ── TOAST ─────────────────────────────────────────────────────────────────────
-
-function toast(msg, type) {
-  var t = document.getElementById('admin-toast');
-  t.textContent = msg;
-  t.className = 'admin-toast show ' + (type || 'success');
-  setTimeout(function() { t.className = 'admin-toast hidden'; }, 3000);
+function showSyncStatus(show,msg){
+  var el=document.getElementById('sync-status'); if(!el) return;
+  if(show){el.textContent=msg||'Syncing…';el.classList.remove('hidden');}else el.classList.add('hidden');
 }
-function showError(msg) { toast(msg, 'error'); }
-
-// ── DASHBOARD ─────────────────────────────────────────────────────────────────
-
-function loadDashboard() {
-  call('getDashboard').then(function(res) {
-    if (!res.success) { showError('Dashboard load failed'); return; }
-    var d = res.data;
-    document.getElementById('m-pending').textContent   = d.pending_orders    || 0;
-    document.getElementById('m-confirmed').textContent = d.confirmed_orders  || 0;
-    document.getElementById('m-failed').textContent    = d.failed_orders     || 0;
-    document.getElementById('m-customers').textContent = d.total_customers   || 0;
-    document.getElementById('m-leads').textContent     =
-      (d.wholesale_leads || 0) + (d.distributor_leads || 0);
-    document.getElementById('m-stock').textContent     = d.low_stock_count   || 0;
-    document.getElementById('m-revenue').textContent   =
-      'N' + formatMoney(d.total_revenue || 0);
-    document.getElementById('m-profit').textContent    =
-      'N' + formatMoney(d.total_net_profit || 0);
-    document.getElementById('badge-orders').textContent = d.pending_orders || 0;
-    document.getElementById('badge-leads').textContent  =
-      (d.wholesale_leads || 0) + (d.distributor_leads || 0);
-  }).catch(function() { showError('Could not load dashboard'); });
+function queueRequest(action,params){
+  var q=JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY)||'[]');
+  q.push({action:action,params:params,timestamp:Date.now(),id:'req_'+Date.now()+'_'+Math.random().toString(36).substr(2,9)});
+  localStorage.setItem(OFFLINE_QUEUE_KEY,JSON.stringify(q));
+  showOfflineStatus(true);
+  toast('Saved offline — will sync when you reconnect','bad');
+  return Promise.resolve({success:false,offline:true,queued:true});
 }
+function drainQueue(){
+  var q=JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY)||'[]');
+  if(!q.length) return;
+  var total=q.length;
+  var failed=[];
+  showSyncStatus(true,'Sending '+total+' saved change'+(total>1?'s':'')+'…');
 
-// ── ORDERS ────────────────────────────────────────────────────────────────────
-
-function loadOrders(tab) {
-  currentOrderTab = tab || currentOrderTab;
-  var el = document.getElementById('orders-content');
-  el.innerHTML = '<div class="loading-state">Loading orders...</div>';
-  var actionMap = {
-    pending:   'getPendingOrders',
-    confirmed: 'getConfirmedOrders',
-    failed:    'getFailedOrders'
-  };
-  call(actionMap[currentOrderTab]).then(function(res) {
-    if (!res.success) { el.innerHTML = '<div class="loading-state">Error loading orders.</div>'; return; }
-    el.innerHTML = renderOrderCards(res.data, currentOrderTab) +
-                   renderOrderTable(res.data, currentOrderTab);
-  }).catch(function() { el.innerHTML = '<div class="loading-state">Connection error.</div>'; });
-}
-
-function switchOrderTab(tab, btn) {
-  currentOrderTab = tab;
-  document.querySelectorAll('#section-orders .tab').forEach(function(t) { t.classList.remove('active'); });
-  btn.classList.add('active');
-  loadOrders(tab);
-}
-
-function renderOrderCards(orders, tab) {
-  if (!orders || orders.length === 0) {
-    return '<div class="card-list"><div class="empty-state"><p>No ' + tab + ' orders.</p></div></div>';
-  }
-  var html = '<div class="card-list">';
-  orders.forEach(function(o) {
-    html += '<div class="data-card">';
-    html += '<div class="card-header">';
-    html += '<div><div class="card-id">' + esc(o.id || o.tracking_id || '') + '</div>';
-    html += '<div class="card-name">' + esc(o.customer_name || o.name || '') + '</div></div>';
-    html += '<span class="badge badge-' + (tab === 'pending' ? 'pending' : tab) + '">' + tab + '</span>';
-    html += '</div>';
-    html += '<div class="card-meta">' + esc(o.phone || '') + ' &bull; ' + esc(o.state || '') + ', ' + esc(o.lga || '') + '</div>';
-    html += '<div class="card-meta">' + esc(o.address || '') + '</div>';
-    html += '<div class="card-items">' + esc(o.items_json || o.items || '') + '</div>';
-    html += '<div class="card-total">N' + formatMoney(o.total || 0) + '</div>';
-    if (tab === 'pending') {
-      html += '<div class="card-actions">';
-      html += '<button class="btn-confirm" onclick="confirmOrder(\'' + esc(o.id) + '\')">Confirm</button>';
-      html += '<button class="btn-fail" onclick="openFailModal(\'' + esc(o.id) + '\')">Fail</button>';
-      html += '</div>';
-    }
-    if (tab === 'failed') {
-      html += '<div class="card-meta" style="margin-top:6px;color:#ef4444;">Reason: ' + esc(o.reason || '') + '</div>';
-    }
-    html += '</div>';
-  });
-  html += '</div>';
-  return html;
-}
-
-function renderOrderTable(orders, tab) {
-  if (!orders || orders.length === 0) {
-    return '<div class="data-table-wrap"><div class="empty-state"><p>No ' + tab + ' orders.</p></div></div>';
-  }
-  var html = '<div class="data-table-wrap"><table class="data-table"><thead><tr>';
-  html += '<th>ID</th><th>Customer</th><th>Phone</th><th>Location</th><th>Items</th><th>Total</th>';
-  if (tab === 'pending')  { html += '<th>Actions</th>'; }
-  if (tab === 'failed')   { html += '<th>Reason</th>'; }
-  html += '</tr></thead><tbody>';
-  orders.forEach(function(o) {
-    html += '<tr>';
-    html += '<td><span style="font-family:var(--mono);font-size:11px;">' + esc(o.id || '') + '</span></td>';
-    html += '<td><strong>' + esc(o.customer_name || o.name || '') + '</strong></td>';
-    html += '<td>' + esc(o.phone || '') + '</td>';
-    html += '<td>' + esc(o.state || '') + (o.lga ? ', ' + esc(o.lga) : '') + '</td>';
-    html += '<td style="max-width:180px;font-size:12px;color:var(--text-muted);">' + esc(o.items_json || o.items || '') + '</td>';
-    html += '<td><strong>N' + formatMoney(o.total || 0) + '</strong></td>';
-    if (tab === 'pending') {
-      html += '<td><div style="display:flex;gap:6px;">';
-      html += '<button class="btn-confirm" onclick="confirmOrder(\'' + esc(o.id) + '\')">Confirm</button>';
-      html += '<button class="btn-fail" onclick="openFailModal(\'' + esc(o.id) + '\')">Fail</button>';
-      html += '</div></td>';
-    }
-    if (tab === 'failed') {
-      html += '<td style="color:var(--red);font-size:12px;">' + esc(o.reason || '') + '</td>';
-    }
-    html += '</tr>';
-  });
-  html += '</tbody></table></div>';
-  return html;
-}
-
-function confirmOrder(orderId) {
-  if (!orderId) { showError('Order ID missing'); return; }
-  call('validateOrder', { order_id: orderId, decision: 'confirm' }).then(function(res) {
-    if (res.success) {
-      toast('Order confirmed and moved to Confirmed Orders');
-      loadOrders('pending');
-      loadDashboard();
-    } else {
-      showError('Failed: ' + (res.error || 'unknown error'));
-    }
-  }).catch(function() { showError('Connection error'); });
-}
-
-// ── FAIL ORDER MODAL ──────────────────────────────────────────────────────────
-
-function openFailModal(orderId) {
-  document.getElementById('fail-order-id').value = orderId;
-  document.getElementById('fail-reason-select').value = '';
-  document.getElementById('fail-reason-other').classList.add('hidden');
-  document.getElementById('fail-reason-other').value = '';
-  document.getElementById('fail-modal').classList.remove('hidden');
-}
-
-function closeFailModal() {
-  document.getElementById('fail-modal').classList.add('hidden');
-}
-
-function handleFailReasonChange() {
-  var sel = document.getElementById('fail-reason-select').value;
-  var other = document.getElementById('fail-reason-other');
-  if (sel === 'Other') { other.classList.remove('hidden'); }
-  else { other.classList.add('hidden'); other.value = ''; }
-}
-
-function submitFailOrder() {
-  var orderId = document.getElementById('fail-order-id').value;
-  var sel = document.getElementById('fail-reason-select').value;
-  var other = document.getElementById('fail-reason-other').value.trim();
-  var reason = sel === 'Other' ? other : sel;
-  if (!reason) { showError('Please select a reason'); return; }
-  call('validateOrder', { order_id: orderId, decision: 'fail', reason: reason }).then(function(res) {
-    if (res.success) {
-      closeFailModal();
-      toast('Order marked as failed');
-      loadOrders('pending');
-      loadDashboard();
-    } else {
-      showError('Failed: ' + (res.error || 'unknown'));
-    }
-  }).catch(function() { showError('Connection error'); });
-}
-
-// ── PRODUCTS ──────────────────────────────────────────────────────────────────
-
-function loadProducts() {
-  var el = document.getElementById('products-content');
-  el.innerHTML = '<div class="loading-state">Loading products...</div>';
-  call('getProducts').then(function(res) {
-    if (!res.success) { el.innerHTML = '<div class="loading-state">Error loading products.</div>'; return; }
-    allProducts = res.data;
-    if (!allProducts || allProducts.length === 0) {
-      el.innerHTML = '<div class="empty-state"><p>No products yet. Add your first product.</p></div>';
-      return;
-    }
-    var html = '<div class="product-grid">';
-    allProducts.forEach(function(p) {
-      var isActive = String(p.active) === 'TRUE';
-      var stockNum = parseInt(p.stock_qty) || 0;
-      var lowStock = stockNum < 10;
-      html += '<div class="product-card" style="' + (isActive ? '' : 'opacity:0.5;') + '">';
-      html += '<div class="product-name">' + esc(p.name) + '</div>';
-      html += '<div class="product-cat">' + esc(p.category) + '</div>';
-      html += '<div class="product-price">Consumer: <strong>N' + formatMoney(p.price_consumer) + '</strong></div>';
-      html += '<div class="product-price">Wholesale: <strong>N' + formatMoney(p.price_wholesale) + '</strong></div>';
-      html += '<div class="product-stock ' + (lowStock ? 'stock-low' : '') + '">Stock: ' + stockNum + (lowStock ? ' — LOW' : '') + '</div>';
-      if (!isActive) { html += '<div class="inactive-label">INACTIVE</div>'; }
-      html += '<div class="product-actions">';
-      html += '<button class="btn-edit" onclick="openProductModal(\'' + esc(p.id) + '\')">Edit</button>';
-      if (isActive) {
-        html += '<button class="btn-delete" onclick="softDeleteProduct(\'' + esc(p.id) + '\')">Deactivate</button>';
+  // Skip-and-continue: process ALL items, collect failures at end
+  var processAll=function(remaining){
+    if(!remaining.length){
+      // All processed — save any failures back to queue
+      if(failed.length){
+        localStorage.setItem(OFFLINE_QUEUE_KEY,JSON.stringify(failed));
+        showSyncStatus(false);
+        var sent=total-failed.length;
+        toast((sent>0?sent+' change'+(sent>1?'s':'')+' sent, ':'')+failed.length+' could not send — will retry when online','bad');
       } else {
-        html += '<button class="btn-edit" onclick="reactivateProduct(\'' + esc(p.id) + '\')">Reactivate</button>';
+        localStorage.removeItem(OFFLINE_QUEUE_KEY);
+        showSyncStatus(false);
+        toast('All '+total+' change'+(total>1?'s':'')+' synced!','good');
+        loadToday();
       }
-      html += '</div></div>';
-    });
-    html += '</div>';
-    el.innerHTML = html;
-  }).catch(function() { el.innerHTML = '<div class="loading-state">Connection error.</div>'; });
-}
-
-function openProductModal(productId) {
-  var modal = document.getElementById('product-modal');
-  var title = document.getElementById('product-modal-title');
-  document.getElementById('pm-id').value = productId || 'NEW';
-  if (!productId) {
-    title.textContent = 'Add Product';
-    ['pm-name','pm-price-consumer','pm-price-wholesale','pm-stock','pm-image','pm-description'].forEach(function(id) {
-      document.getElementById(id).value = '';
-    });
-    document.getElementById('pm-category').value = 'Drinks';
-  } else {
-    title.textContent = 'Edit Product';
-    var p = allProducts.find(function(x) { return x.id === productId; });
-    if (p) {
-      document.getElementById('pm-name').value          = p.name || '';
-      document.getElementById('pm-category').value      = p.category || 'Drinks';
-      document.getElementById('pm-price-consumer').value= p.price_consumer || '';
-      document.getElementById('pm-price-wholesale').value=p.price_wholesale || '';
-      document.getElementById('pm-stock').value         = p.stock_qty || '';
-      document.getElementById('pm-image').value         = p.image_url || '';
-      document.getElementById('pm-description').value   = p.description || '';
-    }
-  }
-  modal.classList.remove('hidden');
-}
-
-function closeProductModal() {
-  document.getElementById('product-modal').classList.add('hidden');
-}
-
-function submitProduct() {
-  var id = document.getElementById('pm-id').value;
-  var payload = {
-    id:               id,
-    name:             document.getElementById('pm-name').value.trim(),
-    category:         document.getElementById('pm-category').value,
-    price_consumer:   document.getElementById('pm-price-consumer').value,
-    price_wholesale:  document.getElementById('pm-price-wholesale').value,
-    stock_qty:        document.getElementById('pm-stock').value,
-    image_url:        document.getElementById('pm-image').value.trim(),
-    description:      document.getElementById('pm-description').value.trim()
-  };
-  if (!payload.name) { showError('Product name is required'); return; }
-  var action = id === 'NEW' ? 'addProduct' : 'updateProduct';
-  call(action, payload).then(function(res) {
-    if (res.success) {
-      closeProductModal();
-      toast(id === 'NEW' ? 'Product added!' : 'Product updated!');
-      loadProducts();
-    } else {
-      showError('Save failed: ' + (res.error || 'unknown'));
-    }
-  }).catch(function() { showError('Connection error'); });
-}
-
-function softDeleteProduct(id) {
-  if (!confirm('Deactivate this product? It will be hidden from the public site but data is kept.')) { return; }
-  call('deleteProduct', { id: id }).then(function(res) {
-    if (res.success) { toast('Product deactivated'); loadProducts(); }
-    else { showError('Error: ' + (res.error || 'unknown')); }
-  });
-}
-
-function reactivateProduct(id) {
-  call('updateProduct', { id: id, active: 'TRUE' }).then(function(res) {
-    if (res.success) { toast('Product reactivated'); loadProducts(); }
-    else { showError('Error: ' + (res.error || 'unknown')); }
-  });
-}
-
-// ── LEADS ─────────────────────────────────────────────────────────────────────
-
-function loadLeads(tab) {
-  currentLeadTab = tab || currentLeadTab;
-  var el = document.getElementById('leads-content');
-  el.innerHTML = '<div class="loading-state">Loading leads...</div>';
-  var action = (currentLeadTab === 'distributor') ? 'getDistributorLeads' : 'getWholesaleLeads';
-  call(action).then(function(res) {
-    if (!res.success) { el.innerHTML = '<div class="loading-state">Error loading leads.</div>'; return; }
-    el.innerHTML = renderLeadCards(res.data) + renderLeadTable(res.data);
-  }).catch(function() { el.innerHTML = '<div class="loading-state">Connection error.</div>'; });
-}
-
-function switchLeadTab(tab, btn) {
-  currentLeadTab = tab;
-  document.querySelectorAll('#section-leads .tab').forEach(function(t) { t.classList.remove('active'); });
-  btn.classList.add('active');
-  loadLeads(tab);
-}
-
-function renderLeadCards(leads) {
-  if (!leads || leads.length === 0) {
-    return '<div class="card-list"><div class="empty-state"><p>No leads yet.</p></div></div>';
-  }
-  var html = '<div class="card-list">';
-  leads.forEach(function(l) {
-    var name = l.contact_name || l.name || '';
-    var biz  = l.business_name || '';
-    html += '<div class="data-card">';
-    html += '<div class="card-header">';
-    html += '<div><div class="card-id">' + esc(l.id || '') + '</div>';
-    html += '<div class="card-name">' + esc(name) + (biz ? ' — ' + esc(biz) : '') + '</div></div>';
-    html += '<span class="badge badge-' + (l.status || 'new') + '">' + esc(l.status || 'new') + '</span>';
-    html += '</div>';
-    html += '<div class="card-meta">' + esc(l.phone || '') + ' &bull; ' + esc(l.state || '') + '</div>';
-    html += '<div class="card-meta">' + esc(l.interest || l.qty || '') + '</div>';
-    if (l.follow_up_date) { html += '<div class="card-meta">Follow-up: ' + esc(String(l.follow_up_date)) + '</div>'; }
-    html += '<div class="card-actions">';
-    html += '<button class="btn-edit" onclick="openLeadModal(\'' + esc(l.id) + '\',\'' + currentLeadTab + '\')">Update</button>';
-    html += '</div></div>';
-  });
-  html += '</div>';
-  return html;
-}
-
-function renderLeadTable(leads) {
-  if (!leads || leads.length === 0) {
-    return '<div class="data-table-wrap"><div class="empty-state"><p>No leads yet.</p></div></div>';
-  }
-  var isDist = (currentLeadTab === 'distributor');
-  var html = '<div class="data-table-wrap"><table class="data-table"><thead><tr>';
-  html += '<th>ID</th><th>Name</th><th>Phone</th><th>State</th>';
-  if (!isDist) { html += '<th>Business</th><th>Interest</th>'; }
-  else         { html += '<th>Region</th><th>Qty</th><th>Kit</th>'; }
-  html += '<th>Status</th><th>Follow-up</th><th>Action</th>';
-  html += '</tr></thead><tbody>';
-  leads.forEach(function(l) {
-    var name = l.contact_name || l.name || '';
-    html += '<tr>';
-    html += '<td style="font-family:var(--mono);font-size:11px;">' + esc(l.id || '') + '</td>';
-    html += '<td><strong>' + esc(name) + '</strong></td>';
-    html += '<td>' + esc(l.phone || '') + '</td>';
-    html += '<td>' + esc(l.state || '') + '</td>';
-    if (!isDist) {
-      html += '<td>' + esc(l.business_name || '') + '</td>';
-      html += '<td style="font-size:12px;">' + esc(l.interest || '') + '</td>';
-    } else {
-      html += '<td>' + esc(l.region || '') + '</td>';
-      html += '<td>' + esc(String(l.qty || '')) + '</td>';
-      html += '<td>' + esc(l.kit_included || '') + '</td>';
-    }
-    html += '<td><span class="badge badge-' + (l.status || 'new') + '">' + esc(l.status || 'new') + '</span></td>';
-    html += '<td style="font-size:12px;">' + esc(String(l.follow_up_date || '—')) + '</td>';
-    html += '<td><button class="btn-edit" onclick="openLeadModal(\'' + esc(l.id) + '\',\'' + currentLeadTab + '\')">Update</button></td>';
-    html += '</tr>';
-  });
-  html += '</tbody></table></div>';
-  return html;
-}
-
-function openLeadModal(leadId, type) {
-  document.getElementById('lm-id').value   = leadId;
-  document.getElementById('lm-type').value = type;
-  document.getElementById('lm-status').value   = 'new';
-  document.getElementById('lm-followup').value = '';
-  document.getElementById('lm-notes').value    = '';
-  document.getElementById('lead-modal').classList.remove('hidden');
-}
-
-function closeLeadModal() {
-  document.getElementById('lead-modal').classList.add('hidden');
-}
-
-function submitLeadUpdate() {
-  var id   = document.getElementById('lm-id').value;
-  var type = document.getElementById('lm-type').value;
-  call('updateLeadStatus', {
-    lead_id:       id,
-    lead_type:     type,
-    status:        document.getElementById('lm-status').value,
-    follow_up_date:document.getElementById('lm-followup').value,
-    notes:         document.getElementById('lm-notes').value.trim()
-  }).then(function(res) {
-    if (res.success) { closeLeadModal(); toast('Lead updated!'); loadLeads(currentLeadTab); }
-    else { showError('Error: ' + (res.error || 'unknown')); }
-  }).catch(function() { showError('Connection error'); });
-}
-
-// ── CUSTOMERS ─────────────────────────────────────────────────────────────────
-
-function loadCustomers() {
-  var el = document.getElementById('customers-content');
-  el.innerHTML = '<div class="loading-state">Loading customers...</div>';
-  call('getCustomers').then(function(res) {
-    if (!res.success) { el.innerHTML = '<div class="loading-state">Error.</div>'; return; }
-    var customers = res.data;
-    if (!customers || customers.length === 0) {
-      el.innerHTML = '<div class="empty-state"><p>No customers yet. Customers appear here when orders are confirmed.</p></div>';
       return;
     }
-    // Sort by total_spend descending
-    customers.sort(function(a, b) { return (parseFloat(b.total_spend) || 0) - (parseFloat(a.total_spend) || 0); });
-    var html = '<div class="card-list">';
-    customers.forEach(function(c) {
-      html += '<div class="customer-card">';
-      html += '<div class="customer-info">';
-      html += '<div class="cname">' + esc(c.name || '') + '</div>';
-      html += '<div class="cphone">' + esc(c.phone || '') + '</div>';
-      html += '<div class="cstate">' + esc(c.state || '') + (c.lga ? ', ' + esc(c.lga) : '') + '</div>';
-      html += '</div>';
-      html += '<div class="customer-stats">';
-      html += '<div class="corders">' + (c.total_orders || 0) + ' orders</div>';
-      html += '<div class="cspend">N' + formatMoney(c.total_spend || 0) + '</div>';
-      html += '</div></div>';
+    var req=remaining.shift();
+    call(req.action,req.params).then(function(res){
+      if(!res.success){ req._retries=(req._retries||0)+1; failed.push(req); }
+      processAll(remaining);
+    }).catch(function(){
+      // Network error mid-drain — requeue everything remaining + this item + already-failed
+      var requeue=[req].concat(remaining).concat(failed);
+      localStorage.setItem(OFFLINE_QUEUE_KEY,JSON.stringify(requeue));
+      showSyncStatus(false);
+      toast('Sync paused — connection dropped. Will retry when back online.','bad');
     });
-    html += '</div>';
-    // Also render desktop table
-    html += '<div class="data-table-wrap"><table class="data-table"><thead><tr>';
-    html += '<th>Name</th><th>Phone</th><th>Location</th><th>Orders</th><th>Total Spend</th><th>Last Order</th>';
-    html += '</tr></thead><tbody>';
-    customers.forEach(function(c) {
-      html += '<tr>';
-      html += '<td><strong>' + esc(c.name || '') + '</strong></td>';
-      html += '<td>' + esc(c.phone || '') + '</td>';
-      html += '<td>' + esc(c.state || '') + (c.lga ? ', ' + esc(c.lga) : '') + '</td>';
-      html += '<td>' + (c.total_orders || 0) + '</td>';
-      html += '<td><strong style="color:var(--green);">N' + formatMoney(c.total_spend || 0) + '</strong></td>';
-      html += '<td style="font-size:12px;">' + esc(String(c.last_order_date || '—')) + '</td>';
-      html += '</tr>';
-    });
-    html += '</tbody></table></div>';
-    el.innerHTML = html;
-  }).catch(function() { el.innerHTML = '<div class="loading-state">Connection error.</div>'; });
-}
-
-// ── FINANCE ───────────────────────────────────────────────────────────────────
-
-function loadFinance() {
-  var el  = document.getElementById('finance-content');
-  var sum = document.getElementById('finance-summary');
-  el.innerHTML  = '<div class="loading-state">Loading finance data...</div>';
-  sum.innerHTML = '';
-  call('getFinance').then(function(res) {
-    if (!res.success) { el.innerHTML = '<div class="loading-state">Error loading finance.</div>'; return; }
-    var rows = res.data || [];
-    // Compute summary totals
-    var totRevenue = 0, totCOGS = 0, totProfit = 0, totSpoilage = 0;
-    rows.forEach(function(r) {
-      totRevenue  += parseFloat(r.total_revenue)  || 0;
-      totCOGS     += parseFloat(r.total_cogs)     || 0;
-      totProfit   += parseFloat(r.net_profit)     || 0;
-      totSpoilage += parseFloat(r.spoilage_value) || 0;
-    });
-    sum.innerHTML =
-      stat('Total Revenue',  'N' + formatMoney(totRevenue),  '') +
-      stat('Total COGS',     'N' + formatMoney(totCOGS),     '') +
-      stat('Net Profit',     'N' + formatMoney(totProfit),   totProfit >= 0 ? 'fin-positive' : 'fin-negative') +
-      stat('Spoilage Losses','N' + formatMoney(totSpoilage), 'fin-negative');
-    if (rows.length === 0) {
-      el.innerHTML = '<div class="empty-state"><p>No finance entries yet. Use + Log Entry to add one.</p></div>';
-      return;
-    }
-    var html = '<div class="data-table-wrap"><table class="data-table"><thead><tr>';
-    html += '<th>Month</th><th>Product</th><th>Units Sold</th><th>Revenue</th><th>COGS</th><th>Gross Profit</th><th>Spoilage</th><th>Net Profit</th>';
-    html += '</tr></thead><tbody>';
-    rows.forEach(function(r) {
-      var np = parseFloat(r.net_profit) || 0;
-      html += '<tr>';
-      html += '<td>' + esc(r.month || '') + '</td>';
-      html += '<td>' + esc(r.product_name || '') + '</td>';
-      html += '<td>' + esc(String(r.units_sold || 0)) + '</td>';
-      html += '<td>N' + formatMoney(r.total_revenue) + '</td>';
-      html += '<td>N' + formatMoney(r.total_cogs) + '</td>';
-      html += '<td>N' + formatMoney(r.gross_profit) + '</td>';
-      html += '<td style="color:var(--red);">N' + formatMoney(r.spoilage_value) + '</td>';
-      html += '<td style="font-weight:700;color:' + (np >= 0 ? 'var(--green)' : 'var(--red)') + ';">N' + formatMoney(np) + '</td>';
-      html += '</tr>';
-    });
-    html += '</tbody></table></div>';
-    el.innerHTML = html;
-  }).catch(function() { el.innerHTML = '<div class="loading-state">Connection error.</div>'; });
-}
-
-function stat(label, value, cls) {
-  return '<div class="fin-stat"><div class="fin-stat-value ' + cls + '">' + value + '</div><div class="fin-stat-label">' + label + '</div></div>';
-}
-
-function openFinanceModal() {
-  var now = new Date();
-  var m   = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-  document.getElementById('fm-month').value    = m;
-  document.getElementById('fm-product').value  = '';
-  document.getElementById('fm-units').value    = '';
-  document.getElementById('fm-cost').value     = '';
-  document.getElementById('fm-sale').value     = '';
-  document.getElementById('fm-spoilage').value = '0';
-  document.getElementById('fm-notes').value    = '';
-  document.getElementById('finance-preview').classList.remove('visible');
-  document.getElementById('finance-preview').innerHTML = '';
-  document.getElementById('finance-modal').classList.remove('hidden');
-  ['fm-units','fm-cost','fm-sale','fm-spoilage'].forEach(function(id) {
-    document.getElementById(id).addEventListener('input', updateFinancePreview);
-  });
-}
-
-function closeFinanceModal() {
-  document.getElementById('finance-modal').classList.add('hidden');
-}
-
-function updateFinancePreview() {
-  var units    = parseInt(document.getElementById('fm-units').value)    || 0;
-  var cost     = parseFloat(document.getElementById('fm-cost').value)   || 0;
-  var sale     = parseFloat(document.getElementById('fm-sale').value)   || 0;
-  var spoilage = parseInt(document.getElementById('fm-spoilage').value) || 0;
-  if (!units || !cost || !sale) { return; }
-  var revenue      = units * sale;
-  var cogs         = units * cost;
-  var grossProfit  = revenue - cogs;
-  var spoilValue   = spoilage * cost;
-  var netProfit    = grossProfit - spoilValue;
-  var preview = document.getElementById('finance-preview');
-  preview.classList.add('visible');
-  preview.innerHTML =
-    fpRow('Revenue',     'N' + formatMoney(revenue)) +
-    fpRow('COGS',        'N' + formatMoney(cogs)) +
-    fpRow('Gross Profit','N' + formatMoney(grossProfit)) +
-    fpRow('Spoilage Loss','N' + formatMoney(spoilValue)) +
-    '<div class="fp-row"><span>Net Profit</span><span style="color:' + (netProfit >= 0 ? 'var(--green)' : 'var(--red)') + ';">N' + formatMoney(netProfit) + '</span></div>';
-}
-
-function fpRow(label, value) {
-  return '<div class="fp-row"><span>' + label + '</span><span>' + value + '</span></div>';
-}
-
-function submitFinanceEntry() {
-  var payload = {
-    month:          document.getElementById('fm-month').value.trim(),
-    product_name:   document.getElementById('fm-product').value.trim(),
-    units_sold:     document.getElementById('fm-units').value,
-    unit_cost_price:document.getElementById('fm-cost').value,
-    unit_sale_price:document.getElementById('fm-sale').value,
-    spoilage_units: document.getElementById('fm-spoilage').value || '0',
-    notes:          document.getElementById('fm-notes').value.trim()
   };
-  if (!payload.month || !payload.product_name || !payload.units_sold) {
-    showError('Month, product and units sold are required');
-    return;
-  }
-  call('addFinanceEntry', payload).then(function(res) {
-    if (res.success) {
-      closeFinanceModal();
-      toast('Finance entry saved!');
-      loadFinance();
-    } else {
-      showError('Error: ' + (res.error || 'unknown'));
-    }
-  }).catch(function() { showError('Connection error'); });
+  processAll(q.slice()); // pass a copy so we can mutate freely
 }
 
-// ── UTILITIES ─────────────────────────────────────────────────────────────────
+// ── API ───────────────────────────────────────────────────────────────────────
 
-function formatMoney(val) {
-  var n = parseFloat(val) || 0;
-  return n.toLocaleString('en-NG');
+function call(action,params){
+  if(!navigator.onLine) return queueRequest(action,params);
+  var body=Object.assign({action:action},params||{});
+  return fetch(API,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}).then(function(r){return r.json();});
 }
-
-function esc(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+function toast(msg,type){
+  var t=document.getElementById('toast'); if(!t) return;
+  t.textContent=msg; t.className='toast show '+(type||'');
+  setTimeout(function(){t.className='toast hidden';},3000);
 }
-
-// Close modals on overlay click
-document.addEventListener('click', function(e) {
-  if (e.target.classList.contains('modal-overlay')) {
-    document.querySelectorAll('.modal-overlay').forEach(function(m) {
-      m.classList.add('hidden');
-    });
+function closeModal(id){ var el=document.getElementById(id); if(el) el.classList.add('hidden'); }
+document.addEventListener('click',function(e){
+  if(e.target.classList.contains('modal-bg'))
+    document.querySelectorAll('.modal-bg').forEach(function(m){m.classList.add('hidden');});
+  if(!e.target.closest('.bottom-nav')&&!e.target.closest('.bn-more-menu')){
+    var mn=document.getElementById('bn-more-menu'); if(mn) mn.classList.remove('open');
   }
 });
+
+function fmt(v)  { return (parseFloat(v)||0).toLocaleString('en-NG'); }
+function fmtK(v) { var n=parseFloat(v)||0; if(n>=1000000) return '₦'+(n/1000000).toFixed(1)+'M'; if(n>=1000) return '₦'+(n/1000).toFixed(0)+'k'; return '₦'+fmt(n); }
+function esc(s)  { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function badge(text,cls){ return '<span class="badge badge-'+esc(cls||text)+'">'+esc(text)+'</span>'; }
+function initials(name){ var p=String(name||'').trim().split(/\s+/); return (p[0]?p[0][0]:'')+(p[1]?p[1][0]:''); }
+
+// ── CHART COLLAPSE ────────────────────────────────────────────────────────────
+
+function initChartStates(){
+  ['chart-months','chart-sellers'].forEach(function(id){
+    var block=document.getElementById(id);
+    if(block&&localStorage.getItem('oa_'+id+'_collapsed')==='true') block.classList.add('collapsed');
+  });
+}
+function toggleChart(chartId){
+  var block=document.getElementById(chartId); if(!block) return;
+  var c=block.classList.toggle('collapsed');
+  localStorage.setItem('oa_'+chartId+'_collapsed',c);
+}
+
+// ── SHOP TODAY ────────────────────────────────────────────────────────────────
+
+function loadToday(){
+  renderGreeting();
+  call('getShopPulse').then(function(res){
+    if(!res.success){toast('Could not load shop data','bad');return;}
+    APP.pulseData=res.data;
+    renderPulseRings(res.data); renderMetricCards(res.data); renderTargetBar(res.data);
+    renderMonthlyChart(res.data); renderTopSellers(res.data);
+    renderLowStockBanner(res.data); updateNavDots(res.data);
+  }).catch(function(){toast('Connection issue — check internet','bad');});
+}
+
+// Time-based greeting (Kimi image 8)
+function renderGreeting(){
+  var el=document.getElementById('today-greeting'); if(!el) return;
+  var h=new Date().getHours();
+  var period=h<12?'MORNING':h<17?'AFTERNOON':'EVENING';
+  var name=APP.name?', '+APP.name.split(' ')[0]:', MANAGER';
+  el.textContent=period+name;
+}
+
+// Pulse rings — grey=no activity, red=negative, yellow=minor, green=strong positive
+function renderPulseRings(d){
+  // Determine colour: grey when null/missing/zero-activity
+  var moneyC  = d.money_pulse  || ((!d.money_in_this_month || d.money_in_this_month===0)  ? 'grey' : 'red');
+  var stockC  = d.stock_pulse  || ((!d.stock_worth || d.stock_worth===0)                   ? 'grey' : 'red');
+  var peopleC = d.people_pulse || (((d.retail_clients||0)+(d.wholesale_clients||0)+(d.distributor_clients||0))===0 ? 'grey' : 'red');
+
+  setPulse('ring-money',  moneyC);
+  setPulse('ring-stock',  stockC);
+  setPulse('ring-people', peopleC);
+
+  var ml={green:'FLOWING WELL',  yellow:'MOVING STEADY', red:'NEEDS ATTENTION', grey:'NO DATA YET'};
+  var sl={green:'ALL STOCKED UP',yellow:'LOSING STEAM',  red:'RUNNING DRY',    grey:'NO RECORDS YET'};
+  var pl={green:'ALL QUIET',     yellow:'SOME INTEREST', red:'HIGH VOLUME',    grey:'NO LEADS YET'};
+  setStatusText('pulse-money-label',  ml[moneyC]||ml.grey,  moneyC);
+  setStatusText('pulse-stock-label',  sl[stockC]||sl.grey,  stockC);
+  setStatusText('pulse-people-label', pl[peopleC]||pl.grey, peopleC);
+}
+function setPulse(id,colour){ var el=document.getElementById(id); if(el) el.className='pulse-ring '+colour; }
+function setStatusText(id,text,colour){
+  var el=document.getElementById(id); if(!el) return;
+  el.textContent=text; el.className='pulse-status-text pulse-text-'+colour;
+}
+
+function expandPulse(type){
+  var d=APP.pulseData; if(!d) return;
+  if(APP.openDrawer===type){ document.getElementById('drawer-'+type).classList.add('hidden'); APP.openDrawer=''; return; }
+  ['money','stock-p','people-p'].forEach(function(t){ document.getElementById('drawer-'+t).classList.add('hidden'); });
+  APP.openDrawer=type;
+  var drawer=document.getElementById('drawer-'+type); drawer.classList.remove('hidden');
+  if(type==='money'){
+    var ch=d.money_change_pct||0, arr=ch>0?'▲':ch<0?'▼':'—', col=ch>0?'color:var(--green)':ch<0?'color:var(--red)':'';
+    drawer.innerHTML='<div class="drawer-msg">'+esc(d.money_message)+'</div>'+
+      drow('Money in this month','₦'+fmt(d.money_in_this_month))+
+      drow('Last month','₦'+fmt(d.money_in_last_month))+
+      drow('Change vs last month','<span style="'+col+'">'+arr+' '+Math.abs(ch)+'%</span>')+
+      drow('People still owe you','₦'+fmt(d.people_still_owe_you))+
+      drow('Monthly goal','₦'+fmt(d.monthly_target))+
+      drow('Goal reached',d.target_reached_pct+'%');
+  }
+  if(type==='stock-p'){
+    var items=d.items_running_low||[];
+    var inner='<div class="drawer-msg">'+esc(d.stock_message)+'</div>'+
+      drow('What your stock is worth','₦'+fmt(d.stock_worth))+
+      drow('If you sell everything today','₦'+fmt(d.if_all_sold))+
+      drow('Possible profit from all stock','₦'+fmt(d.possible_profit));
+    if(items.length){
+      inner+='<div class="drawer-detail" style="margin-top:10px;font-weight:800">Items running low:</div>';
+      items.forEach(function(i){ inner+=drow(esc(i.name),'<span style="color:var(--red);font-weight:800">'+i.stock+' left</span> (alert at '+i.alert_level+')'); });
+    }
+    drawer.innerHTML=inner;
+  }
+  if(type==='people-p'){
+    drawer.innerHTML='<div class="drawer-msg">'+esc(d.people_message)+'</div>'+
+      drow('Small shops asking',d.retail_clients||0)+
+      drow('Wholesalers asking',d.wholesale_clients||0)+
+      drow('Distributors',d.distributor_clients||0)+
+      drow('Follow-ups overdue',d.follow_ups_overdue||0);
+  }
+}
+function drow(label,val){ return '<div class="drawer-row"><span>'+label+'</span><strong>'+val+'</strong></div>'; }
+
+function renderMetricCards(d){
+  var grid=document.getElementById('metric-grid'); if(!grid) return;
+  grid.innerHTML=
+    mCard('mc-money',  '₦'+fmt(d.money_in_this_month),'MONEY IN',
+      'All-time: ₦'+fmt(d.total_money_in),'vs last month: '+(d.money_change_pct>0?'+':'')+(d.money_change_pct||0)+'%')+
+    mCard('mc-orders', String(d.orders_waiting||0),'ORDERS WAITING',
+      'Confirmed today: '+(d.confirmed_orders||0),'Fell through: '+(d.failed_orders||0))+
+    mCard('mc-stock',  String(d.low_stock_count||0),'LOW ITEMS',
+      'Active items: '+(d.total_products||0),'Stock worth: ₦'+fmt(d.stock_worth))+
+    mCard('mc-people', String((d.retail_clients||0)+(d.wholesale_clients||0)+(d.distributor_clients||0)),
+      'PEOPLE ASKING','Customers: '+(d.total_customers||0),'Overdue follow-ups: '+(d.follow_ups_overdue||0));
+}
+function mCard(cls,val,label,sub1,sub2){
+  return '<div class="metric-card '+cls+'" onclick="toggleMcDetail(this)">'+
+    '<div class="mc-val">'+val+'</div><div class="mc-label">'+label+'</div>'+
+    '<div class="mc-detail">'+(sub1?'<div>'+sub1+'</div>':'')+(sub2?'<div style="margin-top:4px">'+sub2+'</div>':'')+'</div></div>';
+}
+function toggleMcDetail(card){ var d=card.querySelector('.mc-detail'); if(d) d.classList.toggle('open'); }
+
+function renderTargetBar(d){
+  var pct=d.target_reached_pct||0;
+  var e1=document.getElementById('target-pct'),e2=document.getElementById('target-fill'),
+      e3=document.getElementById('target-label'),e4=document.getElementById('target-sub');
+  if(e1) e1.textContent=pct+'%';
+  if(e2) e2.style.width=pct+'%';
+  if(e3) e3.textContent='Monthly Revenue Goal — ₦'+fmt(d.monthly_target);
+  if(e4) e4.textContent='₦'+fmt(d.money_in_this_month)+' earned so far this month';
+}
+
+function renderMonthlyChart(d){
+  var chart=d.monthly_chart||[], el=document.getElementById('bar-chart-months'); if(!el) return;
+  if(!chart.length){ el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px 0">No data yet — confirm some sales first</div>'; return; }
+  var max=Math.max.apply(null,chart.map(function(m){return m.revenue;}))||1;
+  el.innerHTML=chart.map(function(m){
+    var h=Math.max(4,Math.round((m.revenue/max)*90)), lbl=m.month?m.month.slice(5):'';
+    return '<div class="bc-wrap"><div class="bc-bar" style="height:'+h+'px"><div class="bc-tip">₦'+fmt(m.revenue)+'</div></div><div class="bc-label">'+lbl+'</div></div>';
+  }).join('');
+}
+
+function renderTopSellers(d){
+  var sellers=d.top_sellers||[], el=document.getElementById('hbar-sellers'); if(!el) return;
+  if(!sellers.length){ el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px 0">No sales yet</div>'; return; }
+  var max=sellers[0].qty||1;
+  el.innerHTML=sellers.map(function(s){
+    var w=Math.round((s.qty/max)*100);
+    return '<div class="hbc-row">'+
+      '<div class="hbc-name-wrap"><div class="hbc-name">'+esc(s.name)+'</div><div class="hbc-sub">'+s.qty+' sales</div></div>'+
+      '<div class="hbc-bar-wrap"><div class="hbc-bar" style="width:'+w+'%"></div></div>'+
+      '</div>';
+  }).join('');
+}
+
+function renderLowStockBanner(d){
+  var banner=document.getElementById('low-stock-banner'); if(!banner) return;
+  var items=d.items_running_low||[];
+  if(!items.length){ banner.classList.add('hidden'); return; }
+  banner.innerHTML=
+    '<div class="banner-content">'+
+      '<span class="banner-icon">⚠️</span>'+
+      '<div class="banner-text-wrap"><strong>'+items.length+' item'+(items.length>1?'s':'')+' running low</strong> — '+
+        items.slice(0,3).map(function(i){return i.name+' ('+i.stock+' left)';}).join(', ')+
+        (items.length>3?' and '+(items.length-3)+' more':'')+'</div>'+
+      '<button class="banner-action" onclick="goto(\'stock\')">Restock Now →</button>'+
+      '<button class="banner-dismiss" onclick="dismissLowStockBanner()">✕</button>'+
+    '</div>';
+  banner.classList.remove('hidden');
+}
+function dismissLowStockBanner(){ var b=document.getElementById('low-stock-banner'); if(b) b.classList.add('hidden'); }
+
+function updateNavDots(d){
+  var od=document.getElementById('dot-orders'), pd=document.getElementById('dot-people');
+  if(od) od.className='sb-dot'+((d.orders_waiting||0)>0?' visible':'');
+  if(pd) pd.className='sb-dot'+((d.retail_clients||0)+(d.wholesale_clients||0)+(d.distributor_clients||0)>0?' visible':'');
+}
+
+// ── WHATSAPP REPORT ───────────────────────────────────────────────────────────
+
+function copyReport(){
+  var d=APP.pulseData; if(!d){toast('Refresh the page first','bad');return;}
+  var now=new Date().toLocaleDateString('en-NG');
+  var lines=['╔══════════════════════════════════════╗',
+    '║   📊 OA DRINKS & SNACKS — SHOP REPORT  ║',
+    '╠══════════════════════════════════════╣','║  Date: '+padRight(now,30)+'║','╚══════════════════════════════════════╝','',
+    '💰 MONEY THIS MONTH','────────────────────────────────────────',
+    '  Money In:         ₦'+padLeft(fmt(d.money_in_this_month),15),
+    '  vs Last Month:     '+padLeft((d.money_change_pct>0?'+':'')+(d.money_change_pct||0)+'%',16),
+    '  Monthly Goal:      ₦'+padLeft(fmt(d.monthly_target),15),
+    '  Goal Progress:     '+padLeft((d.target_reached_pct||0)+'% complete',16),
+    '  People Still Owe:  ₦'+padLeft(fmt(d.people_still_owe_you),15),'',
+    '📦 STOCK','────────────────────────────────────────',
+    '  Stock Worth:       ₦'+padLeft(fmt(d.stock_worth),14),
+    '  If All Sold:       ₦'+padLeft(fmt(d.if_all_sold),14),
+    '  Possible Profit:   ₦'+padLeft(fmt(d.possible_profit),14),
+    '  Items Running Low:  '+padLeft(String(d.low_stock_count||0),14)];
+  if((d.items_running_low||[]).length){
+    lines.push(''); lines.push('  ⚠️ LOW STOCK:');
+    d.items_running_low.forEach(function(i){lines.push('    • '+padRight(i.name,20)+i.stock+' left');});
+  }
+  lines=lines.concat(['','🛒 ORDERS','────────────────────────────────────────',
+    '  Waiting:           '+padLeft(String(d.orders_waiting||0),15),
+    '  Confirmed Today:   '+padLeft(String(d.confirmed_orders||0),15),
+    '  Customers Total:   '+padLeft(String(d.total_customers||0),15),
+    '  Overdue Follow-up: '+padLeft(String(d.follow_ups_overdue||0),15),'',
+    '════════════════════════════════════════','  Sent from OA Shop Book','════════════════════════════════════════']);
+  navigator.clipboard.writeText(lines.join('\n'))
+    .then(function(){toast('Report copied! Paste into WhatsApp','good');})
+    .catch(function(){toast('Could not copy — try again','bad');});
+}
+function padRight(str,len){str=String(str);while(str.length<len)str+=' ';return str;}
+function padLeft(str,len){str=String(str);while(str.length<len)str=' '+str;return str;}
+
+// ── SALES & ORDERS ────────────────────────────────────────────────────────────
+
+function loadOrders(tab){
+  APP.currentOrderTab=tab||APP.currentOrderTab;
+  var el=document.getElementById('orders-body');
+  el.innerHTML='<div class="loading-msg">Loading orders…</div>';
+  var actionMap={pending:'getPendingOrders',confirmed:'getConfirmedOrders',failed:'getFailedOrders'};
+  call(actionMap[APP.currentOrderTab]).then(function(res){
+    if(!res.success){el.innerHTML='<div class="loading-msg">Error loading orders.</div>';return;}
+    var orders=res.data||[];
+    // Summary bar (Kimi image 7)
+    var todaySales=0;
+    if(APP.currentOrderTab==='confirmed'){
+      var today=new Date().toDateString();
+      orders.forEach(function(o){if(new Date(o.confirmed_at).toDateString()===today) todaySales+=parseFloat(o.total)||0;});
+    }
+    var summaryBar='';
+    if(APP.currentOrderTab==='pending')
+      summaryBar='<div class="orders-summary-bar"><div class="osb-stat"><div class="osb-label">ORDERS WAITING</div><div class="osb-val">'+orders.length+'</div></div><div class="osb-stat"><div class="osb-label">ACTIVE TODAY</div><div class="osb-val">'+orders.length+'</div></div></div>';
+    else if(APP.currentOrderTab==='confirmed')
+      summaryBar='<div class="orders-summary-bar"><div class="osb-stat"><div class="osb-label">TODAY\'S SALES</div><div class="osb-val">₦'+fmt(todaySales)+'</div></div><div class="osb-stat"><div class="osb-label">CONFIRMED ORDERS</div><div class="osb-val">'+orders.length+'</div></div></div>';
+    el.innerHTML=summaryBar+renderOrderCards(orders,APP.currentOrderTab)+renderOrderTable(orders,APP.currentOrderTab);
+    if(APP.currentOrderTab==='pending'){
+      var wBtn=document.querySelector('[onclick*="pending"]'); if(wBtn) wBtn.textContent='Waiting ('+orders.length+')';
+    }
+  }).catch(function(){el.innerHTML='<div class="loading-msg">Connection issue.</div>';});
+}
+
+function switchOrderTab(tab,btn){
+  document.querySelectorAll('#page-orders .tab').forEach(function(t){t.classList.remove('active');});
+  btn.classList.add('active'); loadOrders(tab);
+}
+
+function renderOrderCards(orders,tab){
+  if(!orders.length) return '<div class="card-list"><div class="empty-msg">No '+(tab==='pending'?'orders waiting':tab==='confirmed'?'confirmed orders':'fell through orders')+' right now.</div></div>';
+  var html='<div class="card-list">';
+  orders.forEach(function(o){
+    var name=o.buyer_name||o.name||'';
+    var items=[]; try{var p=JSON.parse(o.items_json||'[]');if(Array.isArray(p))items=p;}catch(e){}
+    var dBadge=tab==='confirmed'?badge(delivLabel(o.delivery_status),o.delivery_status||'getting_ready'):tab==='pending'?badge('WAITING','waiting'):badge('FELL THROUGH','fell_through');
+    html+='<div class="order-card">';
+    html+='<div class="order-card-head"><div><div class="order-ref">ORDER #'+esc(o.tracking_ref||o.id||'')+'</div><div class="order-name">'+esc(name)+'</div><div class="order-phone">📞 '+esc(o.phone||'')+'</div></div>'+dBadge+'</div>';
+    if(o.landmark||o.state) html+='<div class="order-location">📍 '+(o.landmark?esc(o.landmark)+', ':'')+esc(o.state||'')+(o.lga?', '+esc(o.lga):'')+'</div>';
+    // Itemised line items (Kimi image 7)
+    if(items.length){
+      html+='<div class="order-items-box">';
+      items.forEach(function(item){ html+='<div class="order-item-row"><span>'+esc(item.qty||1)+'x '+esc(item.name||'')+'</span><span class="order-item-price">₦'+fmt((item.qty||1)*(item.price||0))+'</span></div>'; });
+      html+='<div class="order-total-row"><span>TOTAL</span><span class="order-total-val">₦'+fmt(o.total)+'</span></div></div>';
+    } else {
+      html+='<div class="order-total-row standalone"><span>TOTAL</span><span class="order-total-val">₦'+fmt(o.total)+'</span></div>';
+    }
+    html+='<div class="order-card-actions">';
+    if(tab==='pending'){
+      html+='<button class="btn-confirm" onclick="confirmOrder(\''+esc(o.id)+'\')">✓ CONFIRM</button>';
+      html+='<button class="btn-fail" onclick="openFailModal(\''+esc(o.id)+'\')">✗ FELL THROUGH</button>';
+    }
+    if(tab==='confirmed') html+='<button class="btn-edit" onclick="openDeliveryModal(\''+esc(o.id)+'\')">🚗 Send to Driver</button>';
+    if(tab==='failed') html+='<span style="font-size:12px;color:var(--text3)">'+esc(o.reason||'')+'</span>';
+    html+='</div></div>';
+  });
+  return html+'</div>';
+}
+
+function delivLabel(status){
+  var map={getting_ready:'GETTING READY',on_the_way:'ON THE WAY',delivered:'DELIVERED ✓'};
+  return map[status]||status||'GETTING READY';
+}
+
+function renderOrderTable(orders,tab){
+  if(!orders.length) return '<div class="data-table-wrap"></div>';
+  var html='<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Ref</th><th>Customer</th><th>Phone</th><th>Location</th><th>Items</th><th>Total</th>';
+  if(tab==='pending')   html+='<th>Action</th>';
+  if(tab==='confirmed') html+='<th>Delivery</th><th>Action</th>';
+  if(tab==='failed')    html+='<th>Reason</th>';
+  html+='</tr></thead><tbody>';
+  orders.forEach(function(o){
+    var name=o.buyer_name||o.name||'';
+    html+='<tr><td style="font-size:11px;color:var(--text3)">'+esc(o.tracking_ref||o.id||'')+'</td><td><strong>'+esc(name)+'</strong></td><td>'+esc(o.phone||'')+'</td>';
+    html+='<td>'+esc(o.state||'')+(o.lga?', '+esc(o.lga):'')+'</td>';
+    html+='<td style="font-size:11px;color:var(--text3);max-width:140px">'+esc(String(o.items_json||''))+'</td>';
+    html+='<td><strong>₦'+fmt(o.total)+'</strong></td>';
+    if(tab==='pending') html+='<td><div style="display:flex;gap:5px"><button class="btn-confirm" onclick="confirmOrder(\''+esc(o.id)+'\')">Confirm</button><button class="btn-fail" onclick="openFailModal(\''+esc(o.id)+'\')">Fell Through</button></div></td>';
+    if(tab==='confirmed') html+='<td>'+badge(delivLabel(o.delivery_status),o.delivery_status||'getting_ready')+'</td><td><button class="btn-edit" onclick="openDeliveryModal(\''+esc(o.id)+'\')">Send to Driver</button></td>';
+    if(tab==='failed') html+='<td style="font-size:12px;color:var(--text3)">'+esc(o.reason||'')+'</td>';
+    html+='</tr>';
+  });
+  return html+'</tbody></table></div>';
+}
+
+function confirmOrder(id){
+  call('decideOrder',{order_id:id,decision:'confirm',done_by:APP.name}).then(function(res){
+    if(res.success){toast('Sale confirmed! Stock updated.','good');loadOrders('pending');loadToday();}
+    else toast('Error: '+(res.error||'unknown'),'bad');
+  }).catch(function(){toast('Connection issue','bad');});
+}
+
+function openFailModal(id){
+  document.getElementById('fail-id').value=id;
+  document.getElementById('fail-reason').value='';
+  document.getElementById('fail-other').classList.add('hidden');
+  document.getElementById('fail-other').value='';
+  document.getElementById('modal-fail').classList.remove('hidden');
+}
+function checkOtherReason(){
+  var v=document.getElementById('fail-reason').value, o=document.getElementById('fail-other');
+  if(v==='Other') o.classList.remove('hidden'); else{o.classList.add('hidden');o.value='';}
+}
+function submitFail(){
+  var id=document.getElementById('fail-id').value;
+  var sel=document.getElementById('fail-reason').value;
+  var other=document.getElementById('fail-other').value.trim();
+  var reason=sel==='Other'?other:sel;
+  if(!reason){toast('Please pick a reason','bad');return;}
+  call('decideOrder',{order_id:id,decision:'fail',reason:reason,done_by:APP.name}).then(function(res){
+    if(res.success){closeModal('modal-fail');toast('Order marked as fell through','good');loadOrders('pending');loadToday();}
+    else toast('Error: '+(res.error||''),'bad');
+  });
+}
+
+// ── DELIVERY / WAYBILL ────────────────────────────────────────────────────────
+
+var _deliveryOrder=null;
+
+function openDeliveryModal(orderId){
+  call('getConfirmedOrders').then(function(res){
+    if(!res.success){toast('Cannot load order data','bad');return;}
+    var found=(res.data||[]).find(function(o){return o.id===orderId;});
+    _deliveryOrder=found||{id:orderId};
+    document.getElementById('del-order-id').value=orderId;
+    document.getElementById('del-status').value=(found&&found.delivery_status)||'getting_ready';
+    document.getElementById('del-driver-name').value='';
+    document.getElementById('del-driver-phone').value='';
+    document.getElementById('del-notes').value='';
+    document.getElementById('waybill-preview').classList.add('hidden');
+    document.getElementById('modal-delivery').classList.remove('hidden');
+  });
+}
+
+function sendWaybill(){
+  var orderId=document.getElementById('del-order-id').value;
+  var status=document.getElementById('del-status').value;
+  var driverName=document.getElementById('del-driver-name').value.trim();
+  var driverPhone=document.getElementById('del-driver-phone').value.trim();
+  var notes=document.getElementById('del-notes').value.trim();
+  if(!driverName||!driverPhone){toast('Please enter driver name and phone number','bad');return;}
+  call('updateDelivery',{order_id:orderId,delivery_status:status,driver_name:driverName,driver_phone:driverPhone,waybill_sent:'yes',delivery_notes:notes,done_by:APP.name}).then(function(res){
+    if(!res.success){toast('Could not save delivery info','bad');return;}
+    var o=_deliveryOrder||{};
+    var clean=driverPhone.replace(/\D/g,''); if(clean.startsWith('0')) clean='234'+clean.slice(1);
+    var msg='WAYBILL — OA Drinks & Snacks\n——————————————\nCustomer: '+(o.buyer_name||'')+'\nPhone: '+(o.phone||'')+'\nAddress: '+(o.address||'');
+    if(o.landmark) msg+='\nLandmark: '+o.landmark;
+    msg+='\nItems: '+(o.items_json||'')+'\nTotal to Collect: ₦'+fmt(o.total);
+    if(notes) msg+='\nNote: '+notes;
+    msg+='\n——————————————\nSent by OA Shop Book';
+    var prev=document.getElementById('waybill-preview'); prev.textContent=msg; prev.classList.remove('hidden');
+    navigator.clipboard.writeText(msg).catch(function(){});
+    setTimeout(function(){
+      window.open('https://wa.me/'+clean+'?text='+encodeURIComponent(msg),'_blank');
+      closeModal('modal-delivery'); toast('Waybill sent to driver!','good'); loadOrders('confirmed');
+    },600);
+  });
+}
