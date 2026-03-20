@@ -7,6 +7,7 @@
   <title>OA Shop Book</title>
   <link rel="stylesheet" href="admin.css"/>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&family=Nunito+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -37,8 +38,10 @@
       <h1 class="login-title">OA Shop Book</h1>
       <p class="login-sub">Staff Login — OA Drinks &amp; Snacks</p>
     </div>
-    <label class="field-label">Your Password or PIN</label>
-    <input type="password" id="login-pw" class="field-input login-field" placeholder="Enter password or PIN" autocomplete="off"/>
+    <label class="field-label">Your Email Address</label>
+    <input type="email" id="login-email" class="field-input login-field" placeholder="Enter your email" autocomplete="email"/>
+    <label class="field-label">Your Password</label>
+    <input type="password" id="login-pw" class="field-input login-field" placeholder="Enter your password" autocomplete="off"/>
     <div id="login-err" class="login-err hidden">Wrong password. Please try again.</div>
     <button class="btn-main full" id="login-btn" onclick="doLogin()"><span id="login-btn-text">Sign In</span></button>
     <div class="login-footer">Secure Access Only</div>
@@ -520,19 +523,20 @@
   </div>
 </div>
 
-<!-- Add staff -->
-<div id="modal-staff" class="modal-bg hidden">
+  <div id="modal-staff" class="modal-bg hidden">
   <div class="modal-box">
     <div class="modal-title">Add a Staff Login</div>
     <label class="field-label">Staff Name</label>
     <input type="text" id="sf-name" class="field-input" placeholder="e.g. Blessing"/>
+    <label class="field-label">Their Email Address</label>
+    <input type="email" id="sf-email" class="field-input" placeholder="e.g. blessing@example.com"/>
     <label class="field-label">Their Role</label>
     <select id="sf-role" class="field-input">
       <option value="staff">Staff (Sales / Delivery)</option>
       <option value="master">Admin (Full Access)</option>
     </select>
-    <label class="field-label">Their PIN (minimum 4 characters)</label>
-    <input type="text" id="sf-pin" class="field-input" placeholder="e.g. 5678 or a word"/>
+    <label class="field-label">Their Password (minimum 6 characters)</label>
+    <input type="text" id="sf-pin" class="field-input" placeholder="e.g. blessing2026"/>
     <div class="modal-actions">
       <button class="btn-ghost" onclick="closeModal('modal-staff')">Cancel</button>
       <button class="btn-main" onclick="submitAddStaff()">Add Staff</button>

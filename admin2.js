@@ -1,4 +1,4 @@
-// OA Shop Book — shop2.js  v3.3 Final
+// OA Shop Book — admin2.js  v4.0 Supabase
 // Items in Shop, My Stock, People Asking, Customers, Money Records, Settings
 
 // ── ITEMS IN SHOP ─────────────────────────────────────────────────────────────
@@ -6,13 +6,12 @@
 function loadItems(){
   var el=document.getElementById('items-body');
   el.innerHTML='<div class="loading-msg">Loading items…</div>';
-  call('getProducts').then(function(res){
+  sbCall('getProducts').then(function(res){
     if(!res.success){el.innerHTML='<div class="loading-msg">Error loading items.</div>';return;}
     APP.allProducts=res.data||[];
-    var active=APP.allProducts.filter(function(p){return String(p.active)==='TRUE';});
-    var hidden=APP.allProducts.filter(function(p){return String(p.active)!=='TRUE';});
+    var active=APP.allProducts.filter(function(p){return p.active===true||p.active==='TRUE';});
+    var hidden=APP.allProducts.filter(function(p){return p.active!==true&&p.active!=='TRUE';});
     if(!APP.allProducts.length){el.innerHTML='<div class="empty-msg">No items yet. Add your first item above.</div>';return;}
-    // Search bar (Kimi image 9)
     var html='<div class="items-search-bar"><input type="text" class="items-search-input" placeholder="Search items…" oninput="filterItems(this.value)"/><button class="items-filter-btn">⊟</button></div>';
     html+='<div class="items-grid" id="items-grid-inner">';
     active.forEach(function(p){html+=itemCard(p,false);});
@@ -29,12 +28,12 @@ function filterItems(q){
   });
 }
 
-// Item card with category badge + YOUR COST and DIRECT prices (Kimi image 9)
 function itemCard(p,isHidden){
   var stock=parseInt(p.stock_qty)||0;
   var low=stock<(parseInt(p.low_stock_alert)||20);
   var catBadge=p.category==='Drinks'?'DRINKS':p.category==='Snacks'?'SNACKS':'OTHER';
-  var imgSrc=(p.image_file||'').trim();
+  // Supabase uses image_url; support both field names
+  var imgSrc=(p.image_url||p.image_file||'').trim();
   return '<div class="item-card" data-name="'+esc(p.name)+'" style="'+(isHidden?'opacity:.55':'')+'">' +
     (imgSrc
       ? '<div class="item-img-wrap"><img src="'+esc(imgSrc)+'" alt="'+esc(p.name)+'" class="item-img" onerror="this.parentElement.style.display=\'none\'"/></div>'
@@ -71,11 +70,17 @@ function openProductForm(id){
     title.textContent='Edit Item';
     var p=APP.allProducts.find(function(x){return x.id===id;});
     if(p){
-      document.getElementById('pf-name').value=p.name||''; document.getElementById('pf-cat').value=p.category||'Drinks';
-      document.getElementById('pf-cost').value=p.cost_price||''; document.getElementById('pf-consumer').value=p.consumer_price||'';
-      document.getElementById('pf-retail').value=p.retail_price||''; document.getElementById('pf-wholesale').value=p.wholesale_price||'';
-      document.getElementById('pf-stock').value=p.stock_qty||''; document.getElementById('pf-alert').value=p.low_stock_alert||'20';
-      document.getElementById('pf-img').value=p.image_file||''; document.getElementById('pf-desc').value=p.description||'';
+      document.getElementById('pf-name').value=p.name||'';
+      document.getElementById('pf-cat').value=p.category||'Drinks';
+      document.getElementById('pf-cost').value=p.cost_price||'';
+      document.getElementById('pf-consumer').value=p.consumer_price||'';
+      document.getElementById('pf-retail').value=p.retail_price||'';
+      document.getElementById('pf-wholesale').value=p.wholesale_price||'';
+      document.getElementById('pf-stock').value=p.stock_qty||'';
+      document.getElementById('pf-alert').value=p.low_stock_alert||'20';
+      // Support both image field names
+      document.getElementById('pf-img').value=p.image_url||p.image_file||'';
+      document.getElementById('pf-desc').value=p.description||'';
     }
   }
   document.getElementById('modal-product').classList.remove('hidden');
@@ -83,13 +88,20 @@ function openProductForm(id){
 
 function submitProduct(){
   var id=document.getElementById('pf-id').value;
-  var payload={id:id,name:document.getElementById('pf-name').value.trim(),category:document.getElementById('pf-cat').value,
-    cost_price:document.getElementById('pf-cost').value,consumer_price:document.getElementById('pf-consumer').value,
-    retail_price:document.getElementById('pf-retail').value,wholesale_price:document.getElementById('pf-wholesale').value,
-    stock_qty:document.getElementById('pf-stock').value,low_stock_alert:document.getElementById('pf-alert').value,
-    image_file:document.getElementById('pf-img').value.trim(),description:document.getElementById('pf-desc').value.trim(),done_by:APP.name};
+  var payload={
+    id:id, name:document.getElementById('pf-name').value.trim(),
+    category:document.getElementById('pf-cat').value,
+    cost_price:document.getElementById('pf-cost').value,
+    consumer_price:document.getElementById('pf-consumer').value,
+    retail_price:document.getElementById('pf-retail').value,
+    wholesale_price:document.getElementById('pf-wholesale').value,
+    stock_qty:document.getElementById('pf-stock').value,
+    low_stock_alert:document.getElementById('pf-alert').value,
+    image_file:document.getElementById('pf-img').value.trim(),
+    description:document.getElementById('pf-desc').value.trim(),
+    done_by:APP.name
+  };
   if(!payload.name){toast('Item name is required','bad');return;}
-  // Fix 2: reject negative values in all price/cost fields
   var priceFields=[
     {key:'cost_price',label:'Buying price'},
     {key:'consumer_price',label:'Direct customer price'},
@@ -98,13 +110,13 @@ function submitProduct(){
   ];
   for(var i=0;i<priceFields.length;i++){
     var v=parseFloat(payload[priceFields[i].key]);
-    if(payload[priceFields[i].key]!=='' && (isNaN(v)||v<0)){
+    if(payload[priceFields[i].key]!==''&&(isNaN(v)||v<0)){
       toast(priceFields[i].label+' cannot be negative','bad'); return;
     }
   }
-  if(payload.stock_qty!=='' && parseFloat(payload.stock_qty)<0){toast('Stock quantity cannot be negative','bad');return;}
+  if(payload.stock_qty!==''&&parseFloat(payload.stock_qty)<0){toast('Stock quantity cannot be negative','bad');return;}
   var action=id==='NEW'?'addProduct':'updateProduct';
-  call(action,payload).then(function(res){
+  sbCall(action,payload).then(function(res){
     if(res.success){closeModal('modal-product');toast(id==='NEW'?'Item added!':'Item updated!','good');loadItems();loadToday();}
     else toast('Error: '+(res.error||''),'bad');
   });
@@ -112,12 +124,12 @@ function submitProduct(){
 
 function hideItem(id){
   if(!confirm('Hide this item? It will no longer show on your public site. You can show it again anytime.')) return;
-  call('hideProduct',{id:id,done_by:APP.name}).then(function(res){
+  sbCall('hideProduct',{id:id,done_by:APP.name}).then(function(res){
     if(res.success){toast('Item hidden','good');loadItems();} else toast('Error: '+(res.error||''),'bad');
   });
 }
 function showItemAgain(id){
-  call('updateProduct',{id:id,active:'TRUE',done_by:APP.name}).then(function(res){
+  sbCall('updateProduct',{id:id,active:'TRUE',done_by:APP.name}).then(function(res){
     if(res.success){toast('Item is showing again','good');loadItems();} else toast('Error: '+(res.error||''),'bad');
   });
 }
@@ -129,11 +141,10 @@ function loadStock(tab){
   var el=document.getElementById('stock-body');
   el.innerHTML='<div class="loading-msg">Loading…</div>';
   if(APP.currentStockTab==='levels'){
-    call('getProducts').then(function(res){
+    sbCall('getProducts').then(function(res){
       if(!res.success){el.innerHTML='<div class="loading-msg">Error.</div>';return;}
-      var active=(res.data||[]).filter(function(p){return String(p.active)==='TRUE';});
+      var active=(res.data||[]).filter(function(p){return p.active===true||p.active==='TRUE';});
       if(!active.length){el.innerHTML='<div class="empty-msg">No active items.</div>';return;}
-      // Stock cards with GRADE/LOW STOCK badge, ESTIMATED WORTH and direct +/- (Kimi image 12)
       var html='';
       active.forEach(function(p){
         var stock=parseInt(p.stock_qty)||0;
@@ -144,7 +155,7 @@ function loadStock(tab){
         html+='<div class="stock-card-v2'+(low?' low':'')+'">' +
           '<div class="scv2-head"><div class="scv2-label">PRODUCT</div><span class="'+gradeClass+'">'+grade+'</span></div>' +
           '<div class="scv2-name">'+esc(p.name)+'</div>' +
-          '<div class="scv2-qty'+(low?' low':'')+'">'+stock+'<span class="scv2-unit"> packs</span></div>' +
+          '<div class="scv2-qty'+(low?' low':'"')+'>'+stock+'<span class="scv2-unit"> packs</span></div>' +
           '<div class="scv2-worth"><span class="scv2-worth-label">ESTIMATED WORTH</span><div class="scv2-worth-val">₦'+fmt(val)+'</div></div>' +
           '<div class="scv2-actions">' +
             '<button class="scv2-btn minus" onclick="quickStockChange(\''+esc(p.id)+'\',\'out\',\''+esc(p.name)+'\','+stock+')">−</button>' +
@@ -155,17 +166,16 @@ function loadStock(tab){
       el.innerHTML='<div class="stock-grid-v2">'+html+'</div>';
     });
   } else if(APP.currentStockTab==='batches'){
-    call('getBatchRecords').then(function(res){
+    sbCall('getBatchRecords').then(function(res){
       el.innerHTML=renderSimpleTable(res.data||[],['id','made_on','product_name','qty_made','expires_on','batch_note'],['Batch ID','Made On','Item','Qty Made','Expires On','Note']);
     });
   } else {
-    call('getStockLog').then(function(res){
+    sbCall('getStockLog').then(function(res){
       el.innerHTML=renderSimpleTable(res.data||[],['when','product_name','change_qty','reason','recorded_by','stock_before','stock_after'],['When','Item','Change','Reason','Done By','Before','After']);
     });
   }
 }
 
-// Direct quick stock change from card (Kimi image 12)
 function quickStockChange(pid,dir,name,current){
   var qty=parseInt(prompt((dir==='in'?'Add how many packs of ':'Remove how many packs of ')+name+'? (Current: '+current+')'));
   if(!qty||qty<=0) return;
@@ -173,8 +183,8 @@ function quickStockChange(pid,dir,name,current){
     var newT=dir==='in'?current+qty:current-qty;
     if(!confirm('You are '+(dir==='in'?'adding':'removing')+' '+qty+' packs of '+name+'.\n\nYour current stock is '+current+'.\nAfter this, you will have '+newT+' packs.\n\nIs this correct?')) return;
   }
-  var reason=prompt('Reason for this change:') || 'Manual adjustment';
-  call('adjustStock',{product_id:pid,change_qty:dir==='in'?qty:-qty,reason:reason,done_by:APP.name}).then(function(res){
+  var reason=prompt('Reason for this change:')||'Manual adjustment';
+  sbCall('adjustStock',{product_id:pid,change_qty:dir==='in'?qty:-qty,reason:reason,done_by:APP.name}).then(function(res){
     if(res.success){toast('Stock updated. New total: '+res.after,'good');loadStock('levels');loadToday();}
     else toast('Error: '+(res.error||''),'bad');
   });
@@ -206,7 +216,7 @@ function submitStockAdjust(){
     var confirmMsg='You are '+(dir==='in'?'adding':'removing')+' '+qty+' packs of '+productName+'.\n\nYour current stock is '+currentStock+'.\nAfter this, you will have '+newTotal+' packs.\n\nIs this correct?';
     if(!confirm(confirmMsg)) return;
   }
-  call('adjustStock',{product_id:pid,change_qty:dir==='in'?qty:-qty,reason:reason,done_by:APP.name}).then(function(res){
+  sbCall('adjustStock',{product_id:pid,change_qty:dir==='in'?qty:-qty,reason:reason,done_by:APP.name}).then(function(res){
     if(res.success){closeModal('modal-stock');toast('Stock updated. New total: '+res.after,'good');loadStock('levels');loadToday();}
     else toast('Error: '+(res.error||''),'bad');
   });
@@ -214,8 +224,8 @@ function submitStockAdjust(){
 
 function openBatchForm(){
   var sel=document.getElementById('bf-product'); sel.innerHTML='';
-  call('getProducts').then(function(res){
-    (res.data||[]).filter(function(p){return String(p.active)==='TRUE';}).forEach(function(p){
+  sbCall('getProducts').then(function(res){
+    (res.data||[]).filter(function(p){return p.active===true||p.active==='TRUE';}).forEach(function(p){
       var opt=document.createElement('option'); opt.value=p.id; opt.textContent=p.name; sel.appendChild(opt);
     });
   });
@@ -233,7 +243,7 @@ function submitBatch(){
     var currentStock=product?(parseInt(product.stock_qty)||0):0;
     if(!confirm('You are recording a batch of '+qtyNum+' packs of '+productName+'.\n\nYour current stock is '+currentStock+'.\nAfter this batch, you will have '+(currentStock+qtyNum)+' packs.\n\nIs this correct?')) return;
   }
-  call('logBatch',{product_id:pid,qty_made:qty,expires_on:expiry,batch_note:note,done_by:APP.name}).then(function(res){
+  sbCall('logBatch',{product_id:pid,qty_made:qty,expires_on:expiry,batch_note:note,done_by:APP.name}).then(function(res){
     if(res.success){closeModal('modal-batch');toast('Batch recorded! Stock updated.','good');loadStock('levels');loadToday();}
     else toast('Error: '+(res.error||''),'bad');
   });
@@ -246,11 +256,10 @@ function loadPeople(tab){
   var el=document.getElementById('people-body');
   el.innerHTML='<div class="loading-msg">Loading…</div>';
   var actionMap={retail:'getRetailClients',wholesale:'getWholesaleClients',distributor:'getDistributors'};
-  call(actionMap[APP.currentPeopleTab]).then(function(res){
+  sbCall(actionMap[APP.currentPeopleTab]).then(function(res){
     if(!res.success){el.innerHTML='<div class="loading-msg">Error.</div>';return;}
     var people=res.data||[];
     if(!people.length){el.innerHTML='<div class="card-list"><div class="empty-msg">Nobody here yet.</div></div>';return;}
-    // Update subtitle count (Kimi image 10)
     var subEl=document.getElementById('people-subtitle');
     if(subEl) subEl.textContent='Managing '+people.length+' active '+(tab==='retail'?'small shop':tab==='wholesale'?'wholesale':tab)+' conversations';
     var html='<div class="card-list">';
@@ -260,31 +269,26 @@ function loadPeople(tab){
       var owes=parseFloat(c.balance_owed)||0;
       var stage=c.where_we_are||'still_talking';
       var stageCls='stage-'+stage.replace(/_/g,'-');
-      // Avatar initials (Kimi image 10)
       var av=initials(name);
       var avColour=stage==='ready_to_buy'?'var(--accent2)':stage==='not_interested'?'var(--text3)':'var(--accent)';
       var cleanPhone=String(c.phone||'').replace(/\D/g,'');
       if(cleanPhone.startsWith('0')) cleanPhone='234'+cleanPhone.slice(1);
       html+='<div class="people-card">';
-      // Card header
       html+='<div class="pcard-head">';
       html+='<div class="pcard-avatar" style="background:'+avColour+'">'+esc(av||'?')+'</div>';
       html+='<div class="pcard-info"><div class="pcard-id">ID: #'+esc(c.id||'')+'</div><div class="pcard-name">'+esc(name)+'</div>'+(biz?'<div class="pcard-biz">'+esc(biz)+'</div>':'')+'</div>';
       html+='<span class="people-stage-badge '+stageCls+'">'+stageLabel(stage)+'</span>';
       html+='</div>';
-      // Details
-      if(c.state||c.lga) html+='<div class="pcard-detail">📍 '+esc(c.lga||''+(c.lga&&c.state?', ':'')+c.state)+'</div>';
+      if(c.state||c.lga) html+='<div class="pcard-detail">📍 '+esc((c.lga||'')+((c.lga&&c.state)?', ':'')+( c.state||''))+'</div>';
       if(c.interest||c.packs_requested) html+='<div class="pcard-detail">🧺 '+esc(c.interest||c.packs_requested||'')+'</div>';
-      // Follow-up date with Edit (Kimi image 10)
       if(c.remind_me_on){
         html+='<div class="pcard-followup"><span>🔔 Follow up: '+esc(String(c.remind_me_on))+'</span><button class="pcard-edit-date" onclick="openPeopleModal(\''+esc(c.id)+'\',\''+APP.currentPeopleTab+'\',\''+stage+'\')">EDIT DATE</button></div>';
       }
       if(owes>0) html+='<div class="pcard-owes">💳 Owes you: ₦'+fmt(owes)+'</div>';
-      // 3 action buttons: UPDATE | WHATSAPP | RECORD (Kimi image 10)
       html+='<div class="pcard-actions">';
       html+='<button class="pcard-btn pcard-update" onclick="openPeopleModal(\''+esc(c.id)+'\',\''+APP.currentPeopleTab+'\',\''+stage+'\')">⇄ UPDATE</button>';
       html+='<a class="pcard-btn pcard-wa" href="https://wa.me/'+cleanPhone+'" target="_blank">💬 WHATSAPP</a>';
-      html+='<button class="pcard-btn pcard-record'+(owes<=0?' disabled':'\"')+'" onclick="'+(owes>0?'openPaymentModal(\''+esc(c.id)+'\',\''+APP.currentPeopleTab+'\',\''+esc(name)+'\','+owes+')':'toast(\'No balance to record\',\'bad\')')+'">💰 RECORD</button>';
+      html+='<button class="pcard-btn pcard-record'+(owes<=0?' disabled":':'":')+'onclick="'+(owes>0?'openPaymentModal(\''+esc(c.id)+'\',\''+APP.currentPeopleTab+'\',\''+esc(name)+'\','+owes+')':'toast(\'No balance to record\',\'bad\')')+'">'+'💰 RECORD</button>';
       html+='</div></div>';
     });
     el.innerHTML=html+'</div>'+renderSimpleTable(people,
@@ -313,7 +317,7 @@ function openPeopleModal(id,sheet,stage){
 }
 
 function submitPeopleUpdate(){
-  call('updateClientStatus',{
+  sbCall('updateClientStatus',{
     client_id:document.getElementById('pm-id').value,
     client_sheet:document.getElementById('pm-sheet').value,
     where_we_are:document.getElementById('pm-stage').value,
@@ -336,7 +340,7 @@ function openPaymentModal(clientId,sheet,name,owes){
 function submitPayment(){
   var amount=parseFloat(document.getElementById('pay-amount').value)||0;
   if(!amount||amount<=0){toast('Please enter a valid amount','bad');return;}
-  call('recordPayment',{client_id:document.getElementById('pay-client-id').value,client_sheet:document.getElementById('pay-sheet').value,amount:amount,done_by:APP.name}).then(function(res){
+  sbCall('recordPayment',{client_id:document.getElementById('pay-client-id').value,client_sheet:document.getElementById('pay-sheet').value,amount:amount,done_by:APP.name}).then(function(res){
     if(res.success){
       closeModal('modal-payment');
       toast(res.status==='paid_in_full'?'Payment recorded. Fully paid!':'Payment recorded. Still owes ₦'+fmt(res.still_owes),'good');
@@ -350,7 +354,7 @@ function submitPayment(){
 function loadCustomers(){
   var el=document.getElementById('customers-body');
   el.innerHTML='<div class="loading-msg">Loading customers…</div>';
-  call('getCustomers').then(function(res){
+  sbCall('getCustomers').then(function(res){
     if(!res.success){el.innerHTML='<div class="loading-msg">Error.</div>';return;}
     var customers=(res.data||[]).sort(function(a,b){return (parseFloat(b.total_spent)||0)-(parseFloat(a.total_spent)||0);});
     if(!customers.length){el.innerHTML='<div class="empty-msg">No customers yet. Confirm orders to build your customer list.</div>';return;}
@@ -360,7 +364,6 @@ function loadCustomers(){
       var cleanPhone=String(c.phone||'').replace(/\D/g,'');
       if(cleanPhone.startsWith('0')) cleanPhone='234'+cleanPhone.slice(1);
       if(isTop){
-        // Expanded top-3 card (Kimi image 13)
         var rankColors=['var(--accent)','#6b7280','#d97706'];
         html+='<div class="cust-card-top">';
         html+='<div class="cust-top-head"><div class="cust-rank-badge" style="background:'+rankColors[i]+'">'+rank+'</div>';
@@ -371,7 +374,6 @@ function loadCustomers(){
         if(c.phone) html+='<div class="cust-phone">📞 '+esc(c.phone||'')+'</div>';
         html+='</div>';
       } else {
-        // Compact row (Kimi image 13)
         html+='<div class="cust-card-compact">';
         html+='<div class="cust-rank-num">'+rank+'</div>';
         html+='<div class="cust-compact-info"><div class="cust-name">'+esc(c.name||'')+'</div><div class="cust-meta">'+esc(c.state||'')+'</div></div>';
@@ -380,7 +382,7 @@ function loadCustomers(){
       }
     });
     html+='</div>';
-    html+=renderSimpleTable(customers,['name','phone','state','total_orders','total_spent','heard_from','last_order'],['Name','Phone','State','Orders','Total Spent','How They Found Us','Last Order']);
+    html+=renderSimpleTable(customers,['name','phone','state','total_orders','total_spent','last_order'],['Name','Phone','State','Orders','Total Spent','Last Order']);
     el.innerHTML=html;
   }).catch(function(){el.innerHTML='<div class="loading-msg">Connection issue.</div>';});
 }
@@ -393,7 +395,7 @@ function loadMoney(){
   if(APP.role!=='master') return;
   var el=document.getElementById('money-body'), sum=document.getElementById('money-summary');
   el.innerHTML='<div class="loading-msg">Loading money records…</div>';
-  call('getMoneyRecords').then(function(res){
+  sbCall('getMoneyRecords').then(function(res){
     if(!res.success){el.innerHTML='<div class="loading-msg">Error.</div>';return;}
     var rows=res.data||[];
     var totIn=0,totCost=0,totProfit=0,totSpoil=0,thisMonth=0,lastMonth=0;
@@ -409,7 +411,6 @@ function loadMoney(){
     });
     var chgPct=lastMonth>0?Math.round(((thisMonth-lastMonth)/lastMonth)*100):0;
     var chgSign=chgPct>0?'+':''; var spoilPct=totIn>0?Math.round((totSpoil/totIn)*100):0;
-    // Fix 1c: single compact totals strip — no competing hero cards
     sum.innerHTML=
       '<div class="money-totals-strip">'+
         '<div class="mts-item"><div class="mts-label">TOTAL PROFIT</div>'+
@@ -427,7 +428,6 @@ function loadMoney(){
       el.innerHTML='<div class="empty-msg">No records yet. Use the + button to add your first month.</div>';
       return;
     }
-    // Recent Activity list + See All Records toggle (Kimi image 14)
     var recentRows=rows.slice().reverse().slice(0,5);
     el.innerHTML=
       '<div class="money-activity-header"><div class="money-activity-title">Recent Activity</div>'+
@@ -448,7 +448,6 @@ function loadMoney(){
         renderSimpleTable(rows,['month','product_name','packs_sold','total_collected','total_cost','gross_earnings','spoilage_loss','final_profit'],
           ['Month','Item','Packs Sold','Money In','Total Cost','Gross Earnings','Lost to Waste','Final Profit'])+
       '</div>'+
-      // Master Insight panel (Kimi image 14)
       '<div class="master-insight-panel">'+
         '<div class="mip-head"><span class="mip-icon">⚙</span><span class="mip-label">MASTER INSIGHT</span></div>'+
         '<div class="mip-text">"'+buildInsight(rows,chgPct,totSpoil,totIn)+'"</div>'+
@@ -499,12 +498,18 @@ function calcMoneyPreview(){
 function mpRow(l,v){return '<div class="mp-row"><span>'+l+'</span><span>'+v+'</span></div>';}
 
 function submitMoneyRecord(){
-  var payload={month:document.getElementById('mf-month').value.trim(),product_name:document.getElementById('mf-product').value.trim(),
-    packs_sold:document.getElementById('mf-packs').value,cost_per_pack:document.getElementById('mf-cost').value,
-    sold_per_pack:document.getElementById('mf-sold').value,spoilt_packs:document.getElementById('mf-spoilt').value||'0',
-    notes:document.getElementById('mf-notes').value.trim(),done_by:APP.name};
+  var payload={
+    month:document.getElementById('mf-month').value.trim(),
+    product_name:document.getElementById('mf-product').value.trim(),
+    packs_sold:document.getElementById('mf-packs').value,
+    cost_per_pack:document.getElementById('mf-cost').value,
+    sold_per_pack:document.getElementById('mf-sold').value,
+    spoilt_packs:document.getElementById('mf-spoilt').value||'0',
+    notes:document.getElementById('mf-notes').value.trim(),
+    done_by:APP.name
+  };
   if(!payload.month||!payload.product_name||!payload.packs_sold){toast('Month, item and packs sold are required','bad');return;}
-  call('addMoneyRecord',payload).then(function(res){
+  sbCall('addMoneyRecord',payload).then(function(res){
     if(res.success){closeModal('modal-money');toast('Saved! Profit: ₦'+fmt(res.final_profit),'good');loadMoney();loadToday();}
     else toast('Error: '+(res.error||''),'bad');
   });
@@ -517,18 +522,21 @@ function loadSettings(tab){
   var el=document.getElementById('settings-body');
   el.innerHTML='<div class="loading-msg">Loading…</div>';
   if(tab==='general'){
-    call('getSettings').then(function(res){
+    sbCall('getSettings').then(function(res){
       if(!res.success){el.innerHTML='<div class="loading-msg">Error.</div>';return;}
       var s=res.data||{};
-      var labels={business_name:'Shop / Brand Name',whatsapp_number:'WhatsApp Number for Orders',
-        monthly_target:'Monthly Revenue Goal (₦)',low_stock_alert_level:'Alert Me When Stock Drops Below',
-        bulk_discount_qty:'Bulk Deal: Minimum Packs',bulk_discount_pct:'Bulk Deal: Discount (%)',currency:'Currency'};
+      var labels={
+        shop_name:'Shop / Brand Name',
+        whatsapp_number:'WhatsApp Number for Orders',
+        monthly_target:'Monthly Revenue Goal (₦)',
+        low_stock_default:'Alert Me When Stock Drops Below',
+        delivery_fee:'Delivery Fee (₦)',
+      };
       var html='<div class="settings-block"><div class="settings-block-title">General Settings</div>';
       Object.keys(labels).forEach(function(key){
         html+='<div class="setting-row"><div><div class="setting-label-upper">'+esc(key.replace(/_/g,' ').toUpperCase())+'</div><div class="setting-val-bold">'+esc(String(s[key]||''))+'</div></div>'+
-          '<button class="setting-edit-btn" onclick="editSetting(\''+key+'\',\''+esc(String(s[key]||'\'))\')">✏</button></div>';
+          '<button class="setting-edit-btn" onclick="editSetting(\''+key+'\',\''+esc(String(s[key]||''))+'\')">✏</button></div>';
       });
-      // Danger Zone (Kimi image 11)
       html+='</div><div class="danger-zone-block"><div class="dz-icon">⚠</div><div class="dz-title">Danger Zone</div>'+
         '<div class="dz-desc">This will permanently delete all shop data including orders, items, and history.</div>'+
         '<button class="btn-danger dz-btn" onclick="confirmFactoryReset()">↺ Start Afresh — Factory Reset</button></div>';
@@ -537,20 +545,21 @@ function loadSettings(tab){
   }
   if(tab==='password'){
     el.innerHTML='<div class="settings-block"><div class="settings-block-title">Change Master Password</div>'+
-      '<label class="field-label">Current Password</label><input type="password" id="cpw-current" class="field-input" placeholder="Your current password"/>'+
-      '<label class="field-label">New Password</label><input type="password" id="cpw-new" class="field-input" placeholder="At least 4 characters"/>'+
+      '<label class="field-label">New Password</label><input type="password" id="cpw-new" class="field-input" placeholder="At least 6 characters"/>'+
       '<label class="field-label">Confirm New Password</label><input type="password" id="cpw-confirm" class="field-input" placeholder="Type new password again"/>'+
       '<div style="margin-top:16px"><button class="btn-main" onclick="submitPasswordChange()">Update Password</button></div></div>';
+    // Note: Supabase handles the current password check via the session itself.
+    // No need to enter current password — the session proves identity.
   }
   if(tab==='staff'){
-    call('getStaffList').then(function(res){
+    sbCall('getStaffList').then(function(res){
       var staff=res.data||[];
       var html='<div class="settings-block"><div class="settings-block-title">Staff Logins</div>';
       if(!staff.length) html+='<div class="empty-msg" style="padding:20px 0">No staff logins yet.</div>';
       else staff.forEach(function(s){
         var active=String(s.active)==='TRUE';
         html+='<div class="staff-row"><div><div class="staff-name">'+esc(s.name||'')+(active?'':' (inactive)')+'</div><div class="staff-role">'+esc(s.role||'staff')+'</div></div>'+
-          (active?'<div style="display:flex;gap:6px"><button class="btn-edit" onclick="resetStaffPin(\''+esc(s.id)+'\',\''+esc(s.name||'')+'\')">Reset PIN</button><button class="btn-fail" onclick="deactivateStaff(\''+esc(s.id)+'\',\''+esc(s.name||'')+'\')">Remove</button></div>':'<span style="font-size:12px;color:var(--text3)">Inactive</span>')+'</div>';
+          (active?'<div style="display:flex;gap:6px"><button class="btn-fail" onclick="deactivateStaff(\''+esc(s.id)+'\',\''+esc(s.name||'')+'\')">Remove</button></div>':'<span style="font-size:12px;color:var(--text3)">Inactive</span>')+'</div>';
       });
       html+='</div><div style="margin-top:14px"><button class="btn-main" onclick="document.getElementById(\'modal-staff\').classList.remove(\'hidden\')">+ Add Staff Login</button></div>';
       el.innerHTML=html;
@@ -558,118 +567,63 @@ function loadSettings(tab){
   }
   if(tab==='backup'){
     el.innerHTML='<div class="settings-block"><div class="settings-block-title">Back Up Your Data</div>'+
-      '<p style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:16px">Tapping the button below saves a copy of all your important sheets inside your Google Sheet file.</p>'+
+      '<p style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:16px">Tapping the button below downloads a JSON file of all your important data to your device.</p>'+
       '<button class="btn-main" onclick="doBackup()">💾 Back Up Now</button>'+
       '<div id="backup-result" style="margin-top:12px;font-size:13px;color:var(--text2)"></div></div>';
   }
   if(tab==='audit'){
-    call('getAuditLog').then(function(res){
-      var rows=(res.data||[]).slice().reverse().slice(0,100);
+    sbCall('getAuditLog').then(function(res){
+      var rows=(res.data||[]).slice(0,100);
       el.innerHTML=renderSimpleTable(rows,['when','action','details','done_by'],['When','What Happened','Details','Done By']);
     });
   }
 }
 
 function confirmFactoryReset(){
-  // Step 1 — warn clearly
   if(!confirm(
-    '⚠️ FACTORY RESET — READ CAREFULLY\n\n' +
-    'This will permanently clear ALL your shop data:\n' +
-    '  • All orders (pending, confirmed, fell through)\n' +
-    '  • All customers and CRM contacts\n' +
-    '  • All stock records and batch logs\n' +
-    '  • All money records and audit logs\n\n' +
-    'Your product list and settings will be kept.\n\n' +
-    'A backup will be saved first automatically.\n\n' +
+    '⚠️ FACTORY RESET — READ CAREFULLY\n\n'+
+    'This will permanently clear ALL your shop data:\n'+
+    '  • All orders (pending, confirmed, fell through)\n'+
+    '  • All customers and CRM contacts\n'+
+    '  • All stock records and batch logs\n'+
+    '  • All money records and audit logs\n\n'+
+    'Your product list and settings will be kept.\n\n'+
+    'A backup will be downloaded first automatically.\n\n'+
     'Are you sure you want to continue?'
   )) { return; }
-
-  // Step 2 — type DELETE to confirm
-  var typed = (prompt('Type  DELETE  in capitals to confirm the factory reset:') || '').trim();
-  if(typed !== 'DELETE') {
-    toast('Factory reset cancelled — nothing was changed', 'good');
-    return;
-  }
-
-  // Step 3 — backup first, then reset
-  toast('Saving backup before reset…', '');
-  call('backupNow', { done_by: APP.name }).then(function(backupRes) {
-    var backupOk = backupRes && backupRes.success;
-    call('factoryReset', { done_by: APP.name }).then(function(res) {
-      if(res && res.success) {
-        toast('Factory reset complete.' + (backupOk ? ' Backup saved at ' + res.stamp + '.' : ''), 'good');
-        // Reload the page after 2 seconds so all sections refresh clean
-        setTimeout(function() { window.location.reload(); }, 2000);
+  var typed=(prompt('Type  DELETE  in capitals to confirm the factory reset:')||'').trim();
+  if(typed!=='DELETE'){toast('Factory reset cancelled — nothing was changed','good');return;}
+  toast('Saving backup before reset…','');
+  sbCall('backupNow',{done_by:APP.name}).then(function(){
+    sbCall('factoryReset',{done_by:APP.name}).then(function(res){
+      if(res&&res.success){
+        toast('Factory reset complete.','good');
+        setTimeout(function(){window.location.reload();},2000);
       } else {
-        // Backend doesn't have factoryReset action yet — do client-side clear
-        // Clear all offline queues and session data
-        localStorage.removeItem('oa_sb_offline_queue');
-        toast(
-          '⚠ Your backend does not have a factoryReset action yet.\n' +
-          'To complete this reset, clear your Google Sheets data manually.\n' +
-          (backupOk ? 'Your backup was saved.' : ''),
-          'bad'
-        );
+        toast('Reset error. Please try again.','bad');
       }
-    }).catch(function() {
-      toast('Connection error during reset. Nothing was changed.', 'bad');
     });
-  }).catch(function() {
-    // Backup failed — still ask if they want to continue
-    if(confirm('Could not save backup. Continue with reset anyway?')) {
-      call('factoryReset', { done_by: APP.name }).then(function(res) {
-        if(res && res.success) {
-          toast('Factory reset complete.', 'good');
-          setTimeout(function() { window.location.reload(); }, 2000);
-        } else {
-          toast('Backend reset action not available. Please clear sheets manually.', 'bad');
-        }
-      });
-    }
   });
 }
 
-// ── SECTION RESET ─────────────────────────────────────────────────────────────
-// Clear data in a specific section — master only, requires typed confirmation
-
-function openSectionReset(sectionKey, sectionLabel, sheetNames) {
-  var typed = (prompt(
-    '🗑 Clear ' + sectionLabel + '?\n\n' +
-    'This will permanently delete all records in this section.\n' +
-    'Type  CLEAR  to confirm:'
-  ) || '').trim();
-  if(typed !== 'CLEAR') {
-    toast('Section clear cancelled', 'good');
-    return;
-  }
-  toast('Clearing ' + sectionLabel + '…', '');
-  call('clearSection', {
-    section: sectionKey,
-    sheets:  sheetNames,
-    done_by: APP.name
-  }).then(function(res) {
-    if(res && res.success) {
-      toast(sectionLabel + ' cleared successfully', 'good');
-      // Refresh the relevant page
-      var pageRefreshMap = {
-        orders:    function(){ loadOrders(APP.currentOrderTab); loadToday(); },
-        stock_log: function(){ loadStock('log'); },
-        crm:       function(){ loadPeople(APP.currentPeopleTab); },
-        customers: function(){ loadCustomers(); },
-        audit:     function(){ loadSettings('audit'); },
-        money:     function(){ loadMoney(); }
+function openSectionReset(sectionKey,sectionLabel){
+  var typed=(prompt('🗑 Clear '+sectionLabel+'?\n\nThis will permanently delete all records in this section.\nType  CLEAR  to confirm:')||'').trim();
+  if(typed!=='CLEAR'){toast('Section clear cancelled','good');return;}
+  toast('Clearing '+sectionLabel+'…','');
+  sbCall('clearSection',{section:sectionKey,done_by:APP.name}).then(function(res){
+    if(res&&res.success){
+      toast(sectionLabel+' cleared successfully','good');
+      var pageRefreshMap={
+        orders:    function(){loadOrders(APP.currentOrderTab);loadToday();},
+        stock_log: function(){loadStock('log');},
+        crm:       function(){loadPeople(APP.currentPeopleTab);},
+        audit:     function(){loadSettings('audit');},
+        money:     function(){loadMoney();}
       };
       if(pageRefreshMap[sectionKey]) pageRefreshMap[sectionKey]();
     } else {
-      // Backend action not available — tell master what to do manually
-      toast(
-        'The clearSection action is not yet in your Apps Script.\n' +
-        'Open your Google Sheet and delete the rows in: ' + sheetNames.join(', '),
-        'bad'
-      );
+      toast('Could not clear section: '+(res.error||'unknown error'),'bad');
     }
-  }).catch(function() {
-    toast('Connection error. Nothing was cleared.', 'bad');
   });
 }
 
@@ -677,52 +631,53 @@ function switchSettingsTab(tab,btn){
   document.querySelectorAll('#page-settings .tab').forEach(function(t){t.classList.remove('active');});
   btn.classList.add('active'); loadSettings(tab);
 }
+
 function editSetting(key,currentVal){
   var newVal=prompt('Update "'+key+'":\nCurrent value: '+currentVal,currentVal);
   if(newVal===null||newVal===currentVal) return;
-  call('updateSetting',{key:key,value:newVal,done_by:APP.name}).then(function(res){
+  sbCall('updateSetting',{key:key,value:newVal,done_by:APP.name}).then(function(res){
     if(res.success){toast('Setting updated!','good');loadSettings('general');}
     else toast('Error: '+(res.error||''),'bad');
   });
 }
+
 function submitPasswordChange(){
-  var cur=document.getElementById('cpw-current').value, nw=document.getElementById('cpw-new').value, cnf=document.getElementById('cpw-confirm').value;
-  if(!cur||!nw||!cnf){toast('Please fill in all three fields','bad');return;}
+  var nw=document.getElementById('cpw-new').value, cnf=document.getElementById('cpw-confirm').value;
+  if(!nw||!cnf){toast('Please fill in both fields','bad');return;}
   if(nw!==cnf){toast('New passwords do not match','bad');return;}
-  if(nw.length<4){toast('New password must be at least 4 characters','bad');return;}
-  call('changeMasterPassword',{current_password:cur,new_password:nw}).then(function(res){
-    if(res.success){toast('Password changed successfully','good');['cpw-current','cpw-new','cpw-confirm'].forEach(function(id){document.getElementById(id).value='';});}
-    else toast(res.error||'Incorrect current password','bad');
+  if(nw.length<6){toast('Password must be at least 6 characters','bad');return;}
+  sbCall('changeMasterPassword',{new_password:nw}).then(function(res){
+    if(res.success){toast('Password changed successfully','good');['cpw-new','cpw-confirm'].forEach(function(id){document.getElementById(id).value='';});}
+    else toast(res.error||'Could not change password','bad');
   });
 }
+
 function submitAddStaff(){
-  var name=document.getElementById('sf-name').value.trim(), role=document.getElementById('sf-role').value, pin=document.getElementById('sf-pin').value.trim();
-  if(!name||!pin){toast('Name and PIN are required','bad');return;}
-  if(pin.length<4){toast('PIN must be at least 4 characters','bad');return;}
-  call('addStaff',{name:name,role:role,pin:pin}).then(function(res){
+  var name=document.getElementById('sf-name').value.trim();
+  var role=document.getElementById('sf-role').value;
+  var email=document.getElementById('sf-email')?document.getElementById('sf-email').value.trim():'';
+  var pin=document.getElementById('sf-pin').value.trim();
+  if(!name||!pin){toast('Name and password are required','bad');return;}
+  if(pin.length<6){toast('Password must be at least 6 characters','bad');return;}
+  sbCall('addStaff',{name:name,role:role,email:email,pin:pin}).then(function(res){
     if(res.success){closeModal('modal-staff');toast(name+' added!','good');loadSettings('staff');document.getElementById('sf-name').value='';document.getElementById('sf-pin').value='';}
     else toast(res.error||'Error adding staff','bad');
   });
 }
-function resetStaffPin(id,name){
-  var newPin=prompt('Enter new PIN for '+name+' (minimum 4 characters):');
-  if(!newPin||newPin.length<4) return;
-  call('updateStaffPin',{staff_id:id,new_pin:newPin}).then(function(res){
-    if(res.success) toast('PIN updated for '+name,'good'); else toast('Error: '+(res.error||''),'bad');
-  });
-}
+
 function deactivateStaff(id,name){
   if(!confirm('Remove '+name+' from staff? They will no longer be able to log in.')) return;
-  call('deactivateStaff',{staff_id:id}).then(function(res){
+  sbCall('deactivateStaff',{staff_id:id}).then(function(res){
     if(res.success){toast(name+' removed','good');loadSettings('staff');} else toast('Error: '+(res.error||''),'bad');
   });
 }
+
 function doBackup(){
   var btn=document.querySelector('[onclick="doBackup()"]');
   if(btn){btn.disabled=true;btn.textContent='Backing up…';}
-  call('backupNow',{done_by:APP.name}).then(function(res){
+  sbCall('backupNow',{done_by:APP.name}).then(function(res){
     if(btn){btn.disabled=false;btn.textContent='💾 Back Up Now';}
-    if(res.success){document.getElementById('backup-result').textContent='✓ Backup saved at '+res.stamp;toast('Backup complete!','good');}
+    if(res.success){document.getElementById('backup-result').textContent='✓ Backup downloaded at '+res.stamp;toast('Backup complete!','good');}
     else toast('Backup failed: '+(res.error||''),'bad');
   }).catch(function(){if(btn){btn.disabled=false;btn.textContent='💾 Back Up Now';}toast('Connection error during backup','bad');});
 }
@@ -745,4 +700,4 @@ function renderSimpleTable(rows,cols,labels){
   return html+'</tbody></table></div>';
 }
 
-function initials(name){ var p=String(name||'').trim().split(/\s+/); return ((p[0]?p[0][0]:'')+( p[1]?p[1][0]:'')).toUpperCase(); }
+function initials(name){ var p=String(name||'').trim().split(/\s+/); return ((p[0]?p[0][0]:'')+(p[1]?p[1][0]:'')).toUpperCase(); }
