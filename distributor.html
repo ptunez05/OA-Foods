@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
   <title>Partner Portal | OA Drinks & Snacks</title>
   <link rel="stylesheet" href="index.css" />
   <link rel="stylesheet" href="distributor.css" />
@@ -53,6 +53,10 @@
   </header>
 
   <section class="parallax-hero">
+    <picture>
+      <source srcset="herodis-desktop.png" media="(min-width: 768px)">
+      <img src="herodis-mobile.png" alt="" class="hero-img" fetchpriority="high" draggable="false">
+    </picture>
     <div class="hero-shimmer-overlay"></div>
     <div class="hero-shade"></div>
     <div class="hero-content">
@@ -155,7 +159,7 @@
 
               <div class="form-group span-2">
                 <label>Phone Number <span class="req-star">*</span></label>
-                <input type="tel" id="p-phone" class="shadcn-input" placeholder="e.g. 08031234567" maxlength="14" oninput="formatPhone(this)" autocomplete="tel" inputmode="tel">
+                <input type="tel" id="p-phone" class="shadcn-input" placeholder="e.g. 08031234567" maxlength="14" onblur="formatPhone(this)" autocomplete="tel" inputmode="tel">
               </div>
 
               <div class="form-group span-2">

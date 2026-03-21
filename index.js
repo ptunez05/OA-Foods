@@ -13,6 +13,32 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.add('dark-mode');
     }
 
+    // ── 0. Desktop parallax — subtle translateY on fixed-height hero ────────────
+    // Mobile hero is position:relative so parallax is skipped entirely there.
+    var isMobile = window.innerWidth < 768;
+    var hero = document.querySelector('.parallax-hero');
+    var ticking = false;
+
+    window.addEventListener('resize', function() {
+        isMobile = window.innerWidth < 768;
+        if (isMobile && hero) hero.style.transform = '';
+    }, { passive: true });
+
+    function updateParallax() {
+        if (!hero || isMobile) return;
+        // Cap translateY so hero image never scrolls beyond its own height (520px)
+        var scrolled = Math.min(window.scrollY, 520);
+        hero.style.transform = 'translateY(' + (scrolled * 0.3) + 'px)';
+        ticking = false;
+    }
+
+    window.addEventListener('scroll', function() {
+        if (!ticking && !isMobile) {
+            window.requestAnimationFrame(updateParallax);
+            ticking = true;
+        }
+    }, { passive: true });
+
     // ── 1. Preloader: hide on window load, not blind timeout ──────────────────
     const loader = document.getElementById('preloader');
     if (loader) {

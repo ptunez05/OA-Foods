@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
   <title>OA Drinks & Snacks | The Real Taste is Finally Here</title>
   <link rel="stylesheet" href="index.css" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Montserrat:wght@700;900&family=Dancing+Script:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -67,6 +67,10 @@
   </header>
 
   <section class="parallax-hero">
+    <picture>
+      <source srcset="herohome-desktop.png" media="(min-width: 768px)">
+      <img src="herohome-mobile.png" alt="" class="hero-img" fetchpriority="high" draggable="false">
+    </picture>
     <div class="hero-shimmer-overlay"></div>
     <div class="hero-content">
       <h2 class="hero-title animate-slide-up">
@@ -580,6 +584,7 @@
     Shop Now
   </a>
 
+  <script src="locations.js" defer></script>
   <script src="index.js" defer></script>
 </body>
 </html>

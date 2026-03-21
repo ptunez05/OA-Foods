@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
   <title>Wholesale Hub | OA Drinks & Snacks</title>
   <link rel="stylesheet" href="index.css" />
   <link rel="stylesheet" href="business.css" />
@@ -55,6 +55,10 @@
   </header>
 
   <section class="parallax-hero">
+    <picture>
+      <source srcset="herobus-desktop.png" media="(min-width: 768px)">
+      <img src="herobus-mobile.png" alt="" class="hero-img" fetchpriority="high" draggable="false">
+    </picture>
     <div class="hero-shimmer-overlay"></div>
     <div class="hero-content">
       <h2 class="hero-title animate-slide-up">Scale Your <br><span class="red-text">Business.</span></h2>
@@ -268,7 +272,7 @@
 
             <div class="form-group compact-group">
                 <label class="form-label">Phone Number <span class="req-star">*</span></label>
-                <input type="tel" class="form-control" id="form-phone" placeholder="e.g. 08031234567" autocomplete="tel" inputmode="tel" maxlength="14" oninput="formatBizPhone(this)" required>
+                <input type="tel" class="form-control" id="form-phone" placeholder="e.g. 08031234567" autocomplete="tel" inputmode="tel" maxlength="14" onblur="formatBizPhone(this)" required>
             </div>
 
             <div class="form-grid-row compact-row">

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
   <title>Shop Natural | OA Drinks & Snacks</title>
   <link rel="stylesheet" href="index.css" />
   <link rel="stylesheet" href="consumer.css" />
@@ -48,6 +48,10 @@
   </header>
 
   <section class="parallax-hero">
+    <picture>
+      <source srcset="herocons-desktop.png" media="(min-width: 768px)">
+      <img src="herocons-mobile.png" alt="" class="hero-img" fetchpriority="high" draggable="false">
+    </picture>
     <div class="hero-shimmer-overlay"></div>
     <div class="hero-content">
       <h2 class="hero-title animate-slide-up">Fresh Vibes, <span class="red-text">Pure Flavours</span></h2>

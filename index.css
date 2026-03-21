@@ -128,21 +128,37 @@ body {
 }
 
 /* ─── Parallax Hero ─────────────────────────────────────────────────────────── */
+/* Fixed height — 420px mobile / 520px desktop.
+   Hero image loaded via <picture> in HTML (mobile vs desktop source).
+   Desktop: position:fixed + JS translateY parallax.
+   Mobile: position:relative, normal flow — no 100vh issues on 2018 Android. */
 .parallax-hero {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
-  height: 100vh;
-  background: url('herohome.png') no-repeat center top / cover;
-  background-attachment: fixed;
+  height: 520px;
+  overflow: hidden;
+  z-index: 0;
+  will-change: transform;
+}
+
+/* The <picture><img> inside the hero fills the frame */
+.parallax-hero .hero-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
   z-index: 0;
 }
 
 .parallax-hero::before {
   content: "";
   position: absolute; inset: 0;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.32) 0%, rgba(0,0,0,0.62) 100%);
+  background: linear-gradient(to bottom, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0.58) 70%, rgba(0,0,0,0.72) 100%);
   z-index: 1;
 }
 
@@ -154,10 +170,10 @@ body {
     rgba(255,255,255,0.35) 45%,
     rgba(255,255,255,0.25) 55%,
     transparent 80%);
-  animation: heroGlitter 12s linear infinite;
+  animation: heroGlitter 14s linear infinite;
   pointer-events: none;
   mix-blend-mode: screen;
-  opacity: 0.7;
+  opacity: 0.6;
 }
 @keyframes heroGlitter {
   0%   { transform: translateX(-180%); }
@@ -166,19 +182,20 @@ body {
 
 .hero-content {
   position: relative; z-index: 3;
-  height: 100vh;
+  height: 520px;
   display: flex; flex-direction: column;
-  justify-content: flex-start; align-items: center;
+  justify-content: center; align-items: center;
   text-align: center; color: white;
-  padding-top: 130px;
+  padding: 80px 24px 40px;    /* 80px top clears the fixed header */
+  gap: 10px;
 }
 
 .hero-title {
   font-family: 'Dancing Script', cursive;
-  font-size: clamp(2.0rem, 5.2vw, 3.0rem);
+  font-size: clamp(2.2rem, 5.2vw, 3.2rem);
   font-weight: 400;
   line-height: 1.1;
-  margin-bottom: 14px;
+  margin-bottom: 4px;
   letter-spacing: 0.5px;
 }
 .hero-title .word {
@@ -198,22 +215,22 @@ body {
   font-family: 'Montserrat', sans-serif;
   font-size: 0.72rem;
   font-weight: 700;
-  color: #eee;
-  letter-spacing: 1.6px;
-  margin-bottom: 16px;
-  max-width: 85%;
+  color: rgba(255,255,255,0.92);
+  letter-spacing: 1.4px;
+  max-width: 82%;
+  margin-bottom: 4px;
 }
 
 .hero-micro-delivery {
   display: flex; align-items: center; gap: 8px;
-  font-size: 0.78rem; font-weight: 600;
+  font-size: 0.75rem; font-weight: 600;
   color: rgba(255,255,255,0.9);
-  margin-bottom: 12px;
   background: rgba(255,255,255,0.12);
   padding: 4px 10px;
   border-radius: 999px;
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255,255,255,0.2);
+  order: 1;   /* badge sits below CTAs on mobile via flex order */
 }
 .hero-micro-delivery .pulse-dot {
   width: 8px; height: 8px;
@@ -221,30 +238,37 @@ body {
   animation: pulse 2s infinite;
 }
 
-.hero-cta-stack { margin-top: 8px; }
+.hero-cta-stack {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  order: 0;   /* CTAs always above badge */
+}
 
 .btn-primary {
   background: var(--zobo-red);
   color: white;
-  padding: 8px 22px;
+  padding: 9px 24px;
   border-radius: 50px;
   text-decoration: none;
   font-weight: 800;
   display: inline-block;
-  box-shadow: 0 4px 12px rgba(200,0,15,0.28);
+  box-shadow: 0 4px 14px rgba(200,0,15,0.35);
   transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  font-size: 0.82rem;
+  font-size: 0.85rem;
 }
 
 /* ─── Floating scroll container ─────────────────────────────────────────────── */
+/* Fixed-height hero means no 100vh lies — margin-top is simply hero height minus overlap */
 .scroll-container {
   position: relative;
   z-index: 10;
-  /* Shifted 6 ruler inches (576px) up to overlap the hero */
-  margin-top: calc(100vh - 576px);
+  margin-top: 448px;    /* 520px hero - 72px overlap */
   background: var(--bg-cream);
   border-radius: 36px 36px 0 0;
-  box-shadow: 0 -18px 48px rgba(0,0,0,0.18);
+  box-shadow: 0 -18px 48px rgba(0,0,0,0.22);
   min-height: 100vh;
 }
 
@@ -520,37 +544,33 @@ body.dark-mode .about-bio-section.glass-counter {
   .mini-product-grid { grid-template-columns: repeat(4, 1fr); }
   .path-cards { grid-template-columns: 1fr 1fr; }
   .contact-grid { grid-template-columns: repeat(4, 1fr); }
-  .hero-title { font-size: clamp(2.8rem, 5.5vw, 3.8rem); }
-  .hero-subtitle { font-size: 0.88rem; }
-  .btn-primary { padding: 9px 26px; font-size: 0.88rem; }
+  .hero-title { font-size: clamp(2.8rem, 4vw, 3.6rem); }
+  .hero-subtitle { font-size: 0.82rem; letter-spacing: 1.8px; }
+  .btn-primary { padding: 10px 28px; font-size: 0.9rem; }
+  .hero-cta-stack { gap: 14px; }
+  .hero-micro-delivery { order: 0; }  /* badge back above CTAs on desktop */
+  .hero-cta-stack { order: 1; }
   .reviews-section { border-radius: 0; }
 }
 
 /* ─── Mobile (≤767px) ────────────────────────────────────────────────────────── */
 @media (max-width: 767px) {
   .parallax-hero {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100vh;
-    background-attachment: scroll;
-    background-position: center top;
-    background-size: cover;
-    z-index: 0;
+    position: relative;
+    height: 420px;
+    will-change: auto;
   }
 
   .hero-content {
-    height: 100vh;
-    padding-top: 110px;
+    height: 420px;
+    padding: 72px 20px 32px;
+    gap: 8px;
   }
 
-  .hero-title {
-    margin-top: 10px;
-  }
+  .hero-title { font-size: clamp(1.8rem, 7vw, 2.4rem); }
 
   .scroll-container {
-    margin-top: calc(100vh - 576px);
+    margin-top: -48px;
     border-radius: 28px 28px 0 0;
     box-shadow: 0 -14px 36px rgba(0,0,0,0.2);
   }
@@ -560,30 +580,18 @@ body.dark-mode .about-bio-section.glass-counter {
     margin: 0;
   }
 
-  .testimonial-card {
-    padding: 24px 20px;
-  }
-
-  .review-text {
-    font-size: 0.93rem;
-  }
+  .testimonial-card { padding: 24px 20px; }
+  .review-text { font-size: 0.93rem; }
 }
 
-/* ─── Secondary ghost CTA in hero (UX #8) ───────────────────────────────────── */
-.hero-cta-stack {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  justify-content: center;
-  margin-top: 8px;
-}
+/* ─── Secondary ghost CTA in hero ───────────────────────────────────────────── */
 .btn-secondary-ghost {
   color: white;
-  padding: 8px 18px;
+  padding: 9px 20px;
   border-radius: 50px;
   text-decoration: none;
   font-weight: 700;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   border: 1.5px solid rgba(255,255,255,0.5);
   background: rgba(255,255,255,0.08);
   backdrop-filter: blur(8px);
@@ -1181,3 +1189,155 @@ body.dark-mode .mock-hashtag { color: #60a5fa; }
   font-weight: 600;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE — 2018-era Android to current (320px → 390px)
+   All fixes are additive — original layout untouched above 480px.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Contact grid: 2×2 on narrow screens, 4-col only from 480px ── */
+@media (min-width: 480px) {
+  .contact-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* ── 480px and below: general small-screen tightening ── */
+@media (max-width: 480px) {
+  .section-padding { padding: 44px 0; }
+
+  .section-label.centered-title,
+  .section-title.centered-title {
+    font-size: 1.5rem;
+    margin-bottom: 28px;
+  }
+
+  .story-title { font-size: 1.4rem; }
+  .bio-title   { font-size: 1.3rem; }
+
+  .story-card { padding: 28px 20px; }
+
+  /* Vibe cards slightly shorter */
+  .vibe-card { height: 300px; padding: 22px 20px; }
+
+  /* Social embed cards — no horizontal overflow */
+  .social-embed-card { overflow: hidden; width: 100%; }
+  .social-embeds-grid { overflow: hidden; }
+
+  /* How-it-works steps tighten */
+  .how-step { padding: 22px 18px; }
+
+  /* Counter numbers slightly smaller */
+  .counter-number { font-size: 1.5rem; }
+
+  /* Footer spacing */
+  .footer { padding: 28px 16px 22px; }
+}
+
+/* ── 390px and below: header shrink ── */
+@media (max-width: 390px) {
+  .header {
+    top: 8px; left: 8px; right: 8px;
+    padding: 8px 12px;
+  }
+
+  .oa-logo-box { width: 30px; height: 30px; }
+  .logo-container { gap: 8px; }
+  .brand-name { font-size: 0.92rem; }
+  .brand-tagline { font-size: 0.6rem; }
+
+  .nav-right-actions { gap: 10px; }
+  #theme-toggle { width: 30px; height: 30px; }
+  .menu-label { font-size: 0.6rem; }
+
+  /* Hero — tighter padding on smaller header */
+  .hero-content { padding: 64px 16px 24px; gap: 7px; }
+
+  /* CTA buttons: stack and fill on tiny screens */
+  .hero-cta-stack {
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+  .btn-primary,
+  .btn-secondary-ghost {
+    width: 100%;
+    text-align: center;
+    padding: 11px 16px;
+    font-size: 0.85rem;
+  }
+
+  /* Product grid stays 2-col but tighter */
+  .mini-product-grid { gap: 10px; }
+  .mini-info h4 { font-size: 0.78rem; }
+  .mini-desc { font-size: 0.68rem; }
+
+  /* Section headings */
+  .section-label.centered-title,
+  .section-title.centered-title {
+    font-size: 1.35rem;
+    margin-bottom: 22px;
+  }
+
+  /* Why OA grid — single column at 390px */
+  .why-oa-grid { grid-template-columns: 1fr; }
+  .why-card { padding: 20px 16px; }
+
+  /* How steps tighten further */
+  .how-step { padding: 18px 14px; }
+  .how-step-title { font-size: 0.9rem; }
+  .how-step-desc { font-size: 0.78rem; }
+
+  /* Contact grid stays 2×2 — just ensure text doesn't overflow */
+  .slim-contact-item { font-size: 0.72rem; padding: 12px 6px; }
+  .slim-contact-item svg { width: 20px; height: 20px; }
+}
+
+/* ── 320px: the tightest phones (Galaxy A01, Moto E4, etc.) ── */
+@media (max-width: 360px) {
+  .header { padding: 7px 10px; }
+  .brand-name { font-size: 0.82rem; }
+  .brand-tagline { display: none; }   /* hide on truly tiny screens */
+
+  .hero-content { padding: 60px 14px 20px; gap: 6px; }
+
+  .hero-title { font-size: clamp(1.6rem, 8vw, 2.0rem); }
+  .hero-subtitle { display: none; }   /* hidden at 360px — title + CTA enough */
+
+  .hero-micro-delivery { font-size: 0.68rem; padding: 3px 8px; }
+
+  .section-label.centered-title,
+  .section-title.centered-title {
+    font-size: 1.2rem;
+  }
+
+  .mini-info h4 { font-size: 0.73rem; }
+
+  .vibe-card { height: 260px; }
+  .vibe-card h4 { font-size: 1.2rem; }
+  .vibe-card p { font-size: 0.8rem; }
+
+  .bio-title { font-size: 1.15rem; }
+  .bio-text { font-size: 0.85rem; }
+
+  .story-card { padding: 22px 14px; }
+  .story-text { font-size: 0.85rem; }
+
+  .how-step-icon { width: 46px; height: 46px; }
+
+  /* Footer nav wraps tightly */
+  .footer-nav { gap: 4px 14px; }
+  .footer-nav a { font-size: 0.72rem; }
+  .footer-copy { font-size: 0.65rem; }
+
+  /* Sticky pill moves up slightly to avoid bottom bar */
+  .sticky-shop-pill { bottom: 16px; left: 14px; padding: 9px 16px; font-size: 0.78rem; }
+}
+
+/* ── Safe area insets for notched/island phones ── */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .footer {
+    padding-bottom: calc(28px + env(safe-area-inset-bottom));
+  }
+  .sticky-shop-pill {
+    bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+}
