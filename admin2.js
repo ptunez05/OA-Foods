@@ -4,6 +4,7 @@
 // ── ITEMS IN SHOP ─────────────────────────────────────────────────────────────
 
 function loadItems(){
+  renderRefreshBar('items');
   var el=document.getElementById('items-body');
   el.innerHTML='<div class="loading-msg">Loading items…</div>';
   sbCall('getProducts').then(function(res){
@@ -138,6 +139,7 @@ function showItemAgain(id){
 
 function loadStock(tab){
   APP.currentStockTab=tab||APP.currentStockTab;
+  renderRefreshBar('stock');
   var el=document.getElementById('stock-body');
   el.innerHTML='<div class="loading-msg">Loading…</div>';
   if(APP.currentStockTab==='levels'){
@@ -253,6 +255,7 @@ function submitBatch(){
 
 function loadPeople(tab){
   APP.currentPeopleTab=tab||APP.currentPeopleTab;
+  renderRefreshBar('people');
   var el=document.getElementById('people-body');
   el.innerHTML='<div class="loading-msg">Loading…</div>';
   var actionMap={retail:'getRetailClients',wholesale:'getWholesaleClients',distributor:'getDistributors'};
@@ -352,37 +355,45 @@ function submitPayment(){
 // ── MY CUSTOMERS ──────────────────────────────────────────────────────────────
 
 function loadCustomers(){
+  renderRefreshBar('customers');
   var el=document.getElementById('customers-body');
   el.innerHTML='<div class="loading-msg">Loading customers…</div>';
   sbCall('getCustomers').then(function(res){
     if(!res.success){el.innerHTML='<div class="loading-msg">Error.</div>';return;}
     var customers=(res.data||[]).sort(function(a,b){return (parseFloat(b.total_spent)||0)-(parseFloat(a.total_spent)||0);});
     if(!customers.length){el.innerHTML='<div class="empty-msg">No customers yet. Confirm orders to build your customer list.</div>';return;}
-    var html='<div class="customers-subtitle">Ranking by total lifetime spend</div><div class="card-list">';
+    var html='<div class="customers-subtitle">Ranking by lifetime spend · state &amp; tier computed live</div><div class="card-list">';
     customers.forEach(function(c,i){
       var rank=i+1, isTop=rank<=3;
       var cleanPhone=String(c.phone||'').replace(/\D/g,'');
       if(cleanPhone.startsWith('0')) cleanPhone='234'+cleanPhone.slice(1);
+      var cs = getCustomerState(c);
+      var badges = stateTag(cs.state) + tierTag(cs.tier);
       if(isTop){
         var rankColors=['var(--accent)','#6b7280','#d97706'];
         html+='<div class="cust-card-top">';
         html+='<div class="cust-top-head"><div class="cust-rank-badge" style="background:'+rankColors[i]+'">'+rank+'</div>';
-        html+='<div class="cust-top-info"><div class="cust-name">'+esc(c.name||'')+'</div><div class="cust-meta">'+esc(c.state||'')+(c.lga?', '+esc(c.lga):'')+'</div></div>';
+        html+='<div class="cust-top-info"><div class="cust-name">'+esc(c.name||c.buyer_name||'')+'</div>';
+        html+='<div class="cust-badges">'+badges+'</div>';
+        html+='<div class="cust-meta">'+esc(c.state||'')+(c.lga?', '+esc(c.lga):'')+'</div></div>';
         html+=(cleanPhone?'<a class="btn-wa" style="padding:6px 14px;font-size:12px;text-decoration:none;font-weight:700" href="https://wa.me/'+cleanPhone+'" target="_blank">💬 WhatsApp</a>':'');
         html+='</div>';
-        html+='<div class="cust-top-stats"><div class="cust-stat"><div class="cust-stat-label">TOTAL SPENT</div><div class="cust-stat-val accent">₦'+fmt(c.total_spent)+'</div></div><div class="cust-stat"><div class="cust-stat-label">ORDERS</div><div class="cust-stat-val">'+esc(String(c.total_orders||0))+'</div></div></div>';
+        html+='<div class="cust-top-stats"><div class="cust-stat"><div class="cust-stat-label">TOTAL SPENT</div><div class="cust-stat-val accent">₦'+fmt(c.total_spent)+'</div></div>';
+        html+='<div class="cust-stat"><div class="cust-stat-label">ORDERS</div><div class="cust-stat-val">'+esc(String(c.total_orders||0))+'</div></div>';
+        html+='<div class="cust-stat"><div class="cust-stat-label">LAST ORDER</div><div class="cust-stat-val">'+cs.days+' days ago</div></div></div>';
         if(c.phone) html+='<div class="cust-phone">📞 '+esc(c.phone||'')+'</div>';
         html+='</div>';
       } else {
         html+='<div class="cust-card-compact">';
         html+='<div class="cust-rank-num">'+rank+'</div>';
-        html+='<div class="cust-compact-info"><div class="cust-name">'+esc(c.name||'')+'</div><div class="cust-meta">'+esc(c.state||'')+'</div></div>';
+        html+='<div class="cust-compact-info"><div class="cust-name">'+esc(c.name||c.buyer_name||'')+'</div>';
+        html+='<div class="cust-badges-sm">'+badges+'</div>';
+        html+='<div class="cust-meta">'+esc(c.state||'')+'</div></div>';
         html+='<div class="cust-compact-right"><div class="cust-spent-compact">'+fmtK(c.total_spent)+'</div><div class="cust-orders-compact">'+esc(String(c.total_orders||0))+' orders</div></div>';
         html+='</div>';
       }
     });
     html+='</div>';
-    html+=renderSimpleTable(customers,['name','phone','state','total_orders','total_spent','last_order'],['Name','Phone','State','Orders','Total Spent','Last Order']);
     el.innerHTML=html;
   }).catch(function(){el.innerHTML='<div class="loading-msg">Connection issue.</div>';});
 }
@@ -393,6 +404,7 @@ function fmtK(v){ var n=parseFloat(v)||0; if(n>=1000000) return '₦'+(n/1000000
 
 function loadMoney(){
   if(APP.role!=='master') return;
+  renderRefreshBar('money');
   var el=document.getElementById('money-body'), sum=document.getElementById('money-summary');
   el.innerHTML='<div class="loading-msg">Loading money records…</div>';
   sbCall('getMoneyRecords').then(function(res){
@@ -519,6 +531,7 @@ function submitMoneyRecord(){
 
 function loadSettings(tab){
   APP.currentSettingsTab=tab||APP.currentSettingsTab;
+  renderRefreshBar('settings');
   var el=document.getElementById('settings-body');
   el.innerHTML='<div class="loading-msg">Loading…</div>';
   if(tab==='general'){
@@ -537,7 +550,25 @@ function loadSettings(tab){
         html+='<div class="setting-row"><div><div class="setting-label-upper">'+esc(key.replace(/_/g,' ').toUpperCase())+'</div><div class="setting-val-bold">'+esc(String(s[key]||''))+'</div></div>'+
           '<button class="setting-edit-btn" onclick="editSetting(\''+key+'\',\''+esc(String(s[key]||''))+'\')">✏</button></div>';
       });
-      html+='</div><div class="danger-zone-block"><div class="dz-icon">⚠</div><div class="dz-title">Danger Zone</div>'+
+      html+='</div>';
+
+      // ── Customer tracking thresholds (Phase 5) ─────────────────────────────
+      var thresholdLabels={
+        active_window_days:   'Active Customer Window (days since last order)',
+        dormant_days:         'Gone Quiet After (days of no orders)',
+        loyal_min_orders:     'Loyal Customer — Minimum Orders',
+        high_value_min_spend: 'Big Spender — Minimum Lifetime Spend (₦)',
+      };
+      html+='<div class="settings-block" style="margin-top:16px"><div class="settings-block-title">Customer Tracking Thresholds</div>';
+      html+='<div class="settings-threshold-note">These control how customers are labelled as Active, Gone Quiet, Loyal, Big Spender, and At Risk. Changes take effect on next page load.</div>';
+      Object.keys(thresholdLabels).forEach(function(key){
+        var cur = s[key] || {active_window_days:'14',dormant_days:'30',loyal_min_orders:'5',high_value_min_spend:'50000'}[key] || '';
+        html+='<div class="setting-row"><div><div class="setting-label-upper">'+esc(thresholdLabels[key].toUpperCase())+'</div><div class="setting-val-bold">'+esc(String(cur))+'</div></div>'+
+          '<button class="setting-edit-btn" onclick="editSetting(\''+key+'\',\''+esc(String(cur))+'\')">✏</button></div>';
+      });
+      html+='</div>';
+
+      html+='<div class="danger-zone-block"><div class="dz-icon">⚠</div><div class="dz-title">Danger Zone</div>'+
         '<div class="dz-desc">This will permanently delete all shop data including orders, items, and history.</div>'+
         '<button class="btn-danger dz-btn" onclick="confirmFactoryReset()">↺ Start Afresh — Factory Reset</button></div>';
       el.innerHTML=html;

@@ -25,7 +25,16 @@ var APP = {
   role:'', name:'', userId:'', pulseData:null,
   currentOrderTab:'pending', currentPeopleTab:'retail',
   currentStockTab:'levels', currentSettingsTab:'general',
-  allProducts:[], openDrawer:''
+  allProducts:[], openDrawer:'',
+  // Phase 4 — auto-refresh
+  _refreshTimer: null, _countdownTimer: null, _countdownSecs: 300,
+  // Phase 5 — tracking thresholds (overridden from settings on boot)
+  thresholds: {
+    active_days:     14,   // order in last N days = Active
+    dormant_days:    30,   // no order 15–N days = Gone Quiet
+    loyal_orders:     5,   // >= N orders + recent = Loyal
+    bigspend_amount: 50000,// total spend >= N = Big Spender
+  }
 };
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
@@ -124,8 +133,32 @@ function bootApp() {
   }
   var av = document.getElementById('greeting-avatar');
   if (av && APP.name) av.textContent = initials(APP.name);
+
+  // Load thresholds from settings before anything renders
+  sbCall('getSettings').then(function(res) {
+    var s = res.data || {};
+    if (s.active_window_days)   APP.thresholds.active_days    = parseInt(s.active_window_days)||14;
+    if (s.dormant_days)         APP.thresholds.dormant_days   = parseInt(s.dormant_days)||30;
+    if (s.loyal_min_orders)     APP.thresholds.loyal_orders   = parseInt(s.loyal_min_orders)||5;
+    if (s.high_value_min_spend) APP.thresholds.bigspend_amount= parseFloat(s.high_value_min_spend)||50000;
+  });
+
+  // Today loads immediately (visible on boot)
   loadToday();
+
+  // All other sections preload silently in background after a short delay
+  // so Today renders first without competing network requests
+  setTimeout(function() {
+    loadOrders('pending');
+    loadItems();
+    loadStock('levels');
+    loadPeople('retail');
+    loadCustomers();
+    if (APP.role === 'master') loadMoney();
+  }, 1800);
+
   setupSessionRefresh();
+  startAutoRefresh();
 }
 
 function doLogout() {
@@ -169,6 +202,146 @@ function setupSessionRefresh() {
 }
 
 // ── THEME ─────────────────────────────────────────────────────────────────────
+
+// ── AUTO-REFRESH (Phase 4) ────────────────────────────────────────────────────
+// Refreshes the currently visible section every 5 minutes.
+// Shows a visible countdown badge. Manual refresh button resets the timer.
+
+var REFRESH_INTERVAL_SECS = 300; // 5 minutes
+
+function startAutoRefresh() {
+  clearInterval(APP._refreshTimer);
+  clearInterval(APP._countdownTimer);
+  APP._countdownSecs = REFRESH_INTERVAL_SECS;
+  updateCountdownBadge();
+
+  APP._countdownTimer = setInterval(function() {
+    APP._countdownSecs--;
+    if (APP._countdownSecs <= 0) {
+      APP._countdownSecs = REFRESH_INTERVAL_SECS;
+      refreshActivePage();
+    }
+    updateCountdownBadge();
+  }, 1000);
+}
+
+function updateCountdownBadge() {
+  var secs = APP._countdownSecs;
+  var mins = Math.floor(secs / 60);
+  var s    = secs % 60;
+  var txt  = mins + ':' + (s < 10 ? '0' : '') + s;
+  document.querySelectorAll('.refresh-countdown').forEach(function(el) {
+    el.textContent = txt;
+  });
+}
+
+function manualRefresh() {
+  APP._countdownSecs = REFRESH_INTERVAL_SECS;
+  updateCountdownBadge();
+  refreshActivePage();
+}
+
+function refreshActivePage() {
+  var active = document.querySelector('.page.active');
+  if (!active) return;
+  var id = active.id;
+  if (id === 'page-today')     loadToday();
+  if (id === 'page-orders')    loadOrders(APP.currentOrderTab);
+  if (id === 'page-items')     loadItems();
+  if (id === 'page-stock')     loadStock(APP.currentStockTab);
+  if (id === 'page-people')    loadPeople(APP.currentPeopleTab);
+  if (id === 'page-customers') loadCustomers();
+  if (id === 'page-money')     loadMoney();
+  if (id === 'page-settings')  loadSettings(APP.currentSettingsTab);
+}
+
+// ── CUSTOMER STATE + LOYALTY TIER ENGINE (Phase 5) ───────────────────────────
+// All logic is computed on read — nothing stored in the database.
+// Thresholds are loaded from settings on boot and stored in APP.thresholds.
+
+function customerDaysSinceOrder(lastOrderDate) {
+  if (!lastOrderDate) return 9999;
+  var last = new Date(lastOrderDate);
+  var now  = new Date();
+  return Math.floor((now - last) / 86400000);
+}
+
+function getCustomerState(c) {
+  // c must have: last_order_date, total_orders, total_spent, prev_state (optional)
+  var t    = APP.thresholds;
+  var days = customerDaysSinceOrder(c.last_order_date || c.last_order);
+  var orders = parseInt(c.total_orders) || 0;
+  var spent  = parseFloat(c.total_spent)  || 0;
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  var state;
+  if (orders === 0) {
+    state = 'no_orders';
+  } else if (days <= t.active_days) {
+    state = 'active';
+  } else if (days <= t.dormant_days) {
+    state = 'gone_quiet';
+  } else {
+    state = 'lost';
+  }
+  // Came Back: was lost/gone_quiet and just placed order (days <= active_days)
+  // We detect this by checking if they have multiple orders but recent activity
+  if (days <= t.active_days && orders >= 2) {
+    // Could be reactivated — we flag it but keep state as 'active'
+    // Full reactivation detection needs prev_state which requires history query
+    // so we use a simple heuristic: active + orders >= 2 + gap in last_order visible
+    state = 'active';
+  }
+
+  // ── Tier ──────────────────────────────────────────────────────────────────
+  var tier;
+  var wasLoyal = orders >= t.loyal_orders;
+  var wasBig   = spent >= t.bigspend_amount;
+
+  if (orders === 1) {
+    tier = 'new';
+  } else if (orders >= 2 && orders < t.loyal_orders) {
+    tier = 'returning';
+  } else if (orders >= t.loyal_orders && days <= t.active_days) {
+    tier = 'loyal';
+  } else if (spent >= t.bigspend_amount) {
+    tier = 'big_spender';
+  } else {
+    tier = 'returning';
+  }
+
+  // At Risk: was Loyal or Big Spender, now Gone Quiet or Lost
+  if ((wasLoyal || wasBig) && (state === 'gone_quiet' || state === 'lost')) {
+    tier = 'at_risk';
+  }
+
+  return { state: state, tier: tier, days: days };
+}
+
+var _STATE_LABELS = {
+  active:     'Active',
+  gone_quiet: 'Gone Quiet',
+  lost:       'Lost',
+  no_orders:  'No Orders',
+};
+var _TIER_LABELS = {
+  new:         'New',
+  returning:   'Returning',
+  loyal:       'Loyal',
+  big_spender: 'Big Spender',
+  at_risk:     'At Risk',
+};
+
+function stateTag(state) {
+  var lbl = _STATE_LABELS[state] || state;
+  return '<span class="cust-state-badge state-'+state+'">'+lbl+'</span>';
+}
+function tierTag(tier) {
+  var lbl = _TIER_LABELS[tier] || tier;
+  return '<span class="cust-tier-badge tier-'+tier+'">'+lbl+'</span>';
+}
+
+
 
 function toggleTheme() {
   var cur  = document.documentElement.getAttribute('data-theme') || 'light';
@@ -540,8 +713,10 @@ function getShopPulse() {
     sb().from('settings').select('key,value').eq('project_id',PROJECT_ID),
     // Monthly revenue — last 6 months for chart
     sb().from('money_records').select('month,total_collected').eq('project_id',PROJECT_ID).order('month',{ascending:false}).limit(12),
-    // Confirmed orders all time for customers count
+    // Confirmed orders all time for customers count + recovery signals
     sb().from('orders').select('buyer_name').eq('project_id',PROJECT_ID).eq('status','confirmed'),
+    // Customers view — for recovery signals (gone quiet, at-risk big spenders)
+    sb().from('customers').select('id,buyer_name,phone,total_orders,total_spent,last_order_date').eq('project_id',PROJECT_ID),
   ]).then(function(results) {
     var products   = (results[0].data||[]);
     var moneyRows  = (results[1].data||[]);
@@ -553,6 +728,7 @@ function getShopPulse() {
     var settRows   = (results[7].data||[]);
     var chartRows  = (results[8].data||[]);
     var allOrders  = (results[9].data||[]);
+    var customers  = (results[10].data||[]);
 
     // Settings map
     var sett = {};
@@ -633,6 +809,21 @@ function getShopPulse() {
     var stockPulse  = lowItems.length===0?'green':lowItems.length<3?'yellow':'red';
     var peoplePulse = (retailC+wholesaleC+distributorC)===0?'grey':overdueFollowups>0?'red':'green';
 
+    // ── Recovery signals (Phase 5) ────────────────────────────────────────────
+    var recoveryGoneQuiet = [];
+    var recoveryAtRisk    = [];
+    customers.forEach(function(c) {
+      var cs = getCustomerState(c);
+      if (cs.state === 'gone_quiet') {
+        recoveryGoneQuiet.push({ name: c.buyer_name||'Customer', phone: c.phone||'', days: cs.days, spent: c.total_spent });
+      }
+      if (cs.tier === 'at_risk') {
+        recoveryAtRisk.push({ name: c.buyer_name||'Customer', phone: c.phone||'', days: cs.days, spent: c.total_spent });
+      }
+    });
+    recoveryGoneQuiet.sort(function(a,b){ return b.days - a.days; });
+    recoveryAtRisk.sort(function(a,b){ return (parseFloat(b.spent)||0) - (parseFloat(a.spent)||0); });
+
     return {success:true, data:{
       // Money
       money_in_this_month:  moneyThisMonth,
@@ -668,6 +859,9 @@ function getShopPulse() {
       // Charts
       monthly_chart:        monthlyChart,
       top_sellers:          topSellers,
+      // Recovery signals
+      recovery_gone_quiet:  recoveryGoneQuiet.slice(0,5),
+      recovery_at_risk:     recoveryAtRisk.slice(0,5),
     }};
   }).catch(function(e){
     return {success:false, error:e.message||'Could not load shop data'};
@@ -1131,12 +1325,14 @@ function toggleChart(chartId){
 
 function loadToday(){
   renderGreeting();
+  renderRefreshBar('today');
   sbCall('getShopPulse').then(function(res){
     if(!res.success){toast('Could not load shop data','bad');return;}
     APP.pulseData=res.data;
     renderPulseRings(res.data); renderMetricCards(res.data); renderTargetBar(res.data);
     renderMonthlyChart(res.data); renderTopSellers(res.data);
     renderLowStockBanner(res.data); updateNavDots(res.data);
+    renderRecoverySignals(res.data);
   }).catch(function(){toast('Connection issue — check internet','bad');});
 }
 
@@ -1271,6 +1467,72 @@ function updateNavDots(d){
   if(pd) pd.className='sb-dot'+((d.retail_clients||0)+(d.wholesale_clients||0)+(d.distributor_clients||0)>0?' visible':'');
 }
 
+// ── RECOVERY SIGNALS PANEL (Phase 5) ─────────────────────────────────────────
+function renderRecoverySignals(d) {
+  var panel = document.getElementById('recovery-panel');
+  if (!panel) return;
+
+  var gq = d.recovery_gone_quiet || [];
+  var ar = d.recovery_at_risk    || [];
+
+  if (!gq.length && !ar.length) {
+    panel.innerHTML = '<div class="recovery-empty">✅ No recovery actions needed right now.</div>';
+    panel.classList.remove('hidden');
+    return;
+  }
+
+  var html = '<div class="recovery-title">⚡ Recovery Signals</div>';
+
+  if (gq.length) {
+    html += '<div class="recovery-section-label">Gone Quiet — reach out now</div>';
+    gq.forEach(function(c) {
+      var waNum = (c.phone||'').replace(/\D/g,'');
+      if (waNum.startsWith('0')) waNum = '234' + waNum.slice(1);
+      var waLink = waNum ? '<a class="btn-wa-xs" href="https://wa.me/'+waNum+'" target="_blank">WhatsApp</a>' : '';
+      html += '<div class="recovery-row">'+
+        '<div class="recovery-info">'+
+          '<div class="recovery-name">'+esc(c.name)+'</div>'+
+          '<div class="recovery-meta">Silent for <strong>'+c.days+' days</strong> · spent ₦'+fmtK(c.spent)+'</div>'+
+        '</div>'+
+        waLink+
+      '</div>';
+    });
+  }
+
+  if (ar.length) {
+    html += '<div class="recovery-section-label" style="margin-top:12px">At Risk — were loyal, now quiet</div>';
+    ar.forEach(function(c) {
+      var waNum = (c.phone||'').replace(/\D/g,'');
+      if (waNum.startsWith('0')) waNum = '234' + waNum.slice(1);
+      var waLink = waNum ? '<a class="btn-wa-xs" href="https://wa.me/'+waNum+'" target="_blank">WhatsApp</a>' : '';
+      html += '<div class="recovery-row">'+
+        '<div class="recovery-info">'+
+          '<div class="recovery-name">'+esc(c.name)+'</div>'+
+          '<div class="recovery-meta">Silent for <strong>'+c.days+' days</strong> · lifetime ₦'+fmtK(c.spent)+'</div>'+
+        '</div>'+
+        waLink+
+      '</div>';
+    });
+  }
+
+  panel.innerHTML = html;
+  panel.classList.remove('hidden');
+}
+
+// ── REFRESH BAR (Phase 4) ─────────────────────────────────────────────────────
+// Injects a slim refresh bar into the section header of a given page.
+// Called at the top of every loadX() function.
+function renderRefreshBar(pageKey) {
+  var barId = 'refresh-bar-' + pageKey;
+  var bar   = document.getElementById(barId);
+  if (!bar) return;
+  bar.innerHTML =
+    '<span class="refresh-label">Auto-refresh in</span>'+
+    '<span class="refresh-countdown">5:00</span>'+
+    '<button class="refresh-btn" onclick="manualRefresh()" title="Refresh now">↺</button>';
+  updateCountdownBadge();
+}
+
 // ── WHATSAPP REPORT ───────────────────────────────────────────────────────────
 
 function copyReport(){
@@ -1311,6 +1573,7 @@ function padLeft(str,len){str=String(str);while(str.length<len)str=' '+str;retur
 
 function loadOrders(tab){
   APP.currentOrderTab=tab||APP.currentOrderTab;
+  renderRefreshBar('orders');
   var el=document.getElementById('orders-body');
   el.innerHTML='<div class="loading-msg">Loading orders…</div>';
   var actionMap={pending:'getPendingOrders',confirmed:'getConfirmedOrders',failed:'getFailedOrders'};

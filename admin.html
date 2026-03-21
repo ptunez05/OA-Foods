@@ -116,6 +116,12 @@
         <div class="greeting-avatar" id="greeting-avatar">OA</div>
       </div>
 
+      <!-- Auto-refresh bar -->
+      <div class="refresh-bar" id="refresh-bar-today"></div>
+
+      <!-- Recovery signals panel -->
+      <div class="recovery-panel hidden" id="recovery-panel"></div>
+
       <!-- 3 Pulse cards with status text (Kimi image 8) -->
       <div class="pulse-row" id="pulse-row">
         <div class="pulse-card" onclick="expandPulse('money')">
@@ -195,6 +201,7 @@
           onclick="openSectionReset('orders','Sales Records',['Pending_Orders','Confirmed_Orders','Failed_Orders'])"
           title="Clear all order records">🗑</button>
       </div>
+      <div class="refresh-bar" id="refresh-bar-orders"></div>
       <div class="tab-strip">
         <button class="tab active" onclick="switchOrderTab('pending',this)">Waiting (0)</button>
         <button class="tab" onclick="switchOrderTab('confirmed',this)">Confirmed</button>
@@ -213,6 +220,7 @@
         <div><div class="page-supertitle">INVENTORY</div><h2 class="page-title">Items</h2></div>
         <button class="btn-main sm" onclick="openProductForm(null)">+ Add Product</button>
       </div>
+      <div class="refresh-bar" id="refresh-bar-items"></div>
       <div id="items-body" class="section-body">
         <div class="loading-msg">Loading items…</div>
       </div>
@@ -229,6 +237,7 @@
             title="Clear stock change log">🗑</button>
         </div>
       </div>
+      <div class="refresh-bar" id="refresh-bar-stock"></div>
       <div class="tab-strip">
         <button class="tab active" onclick="switchStockTab('levels',this)">Stock Levels</button>
         <button class="tab" onclick="switchStockTab('batches',this)">Production Batches</button>
@@ -248,6 +257,7 @@
           onclick="openSectionReset('crm','People Asking',['Retail_Clients','Wholesale_Clients','Distributor_Clients'])"
           title="Clear all CRM contacts">🗑</button>
       </div>
+      <div class="refresh-bar" id="refresh-bar-people"></div>
       <div class="tab-strip">
         <button class="tab active" onclick="switchPeopleTab('retail',this)">Small Shops</button>
         <button class="tab" onclick="switchPeopleTab('wholesale',this)">Wholesalers</button>
@@ -260,13 +270,11 @@
     <section id="page-customers" class="page hidden">
       <div class="page-head">
         <h2 class="page-title">Top Customers</h2>
-        <div class="page-head-actions">
-          <button class="btn-ghost sm" onclick="loadCustomers()">↺ Refresh</button>
-          <button class="btn-clear-section master-only"
-            onclick="openSectionReset('customers','Customers',['Customers'])"
-            title="Clear all customer records">🗑</button>
-        </div>
+        <button class="btn-clear-section master-only"
+          onclick="openSectionReset('customers','Customers',['Customers'])"
+          title="Clear all customer records">🗑</button>
       </div>
+      <div class="refresh-bar" id="refresh-bar-customers"></div>
       <div id="customers-body" class="section-body"><div class="loading-msg">Loading customers…</div></div>
     </section>
 
@@ -281,6 +289,7 @@
             title="Clear all money records">🗑</button>
         </div>
       </div>
+      <div class="refresh-bar" id="refresh-bar-money"></div>
       <div id="money-summary" class="money-summary-area"></div>
       <div id="money-body" class="section-body"><div class="loading-msg">Loading money records…</div></div>
     </section>
@@ -290,6 +299,7 @@
       <div class="page-head">
         <div><h2 class="page-title">Shop Settings</h2><div class="page-subtitle">Master Access Only</div></div>
       </div>
+      <div class="refresh-bar" id="refresh-bar-settings"></div>
       <div class="tab-strip">
         <button class="tab active" onclick="switchSettingsTab('general',this)">General</button>
         <button class="tab" onclick="switchSettingsTab('password',this)">Change Password</button>

@@ -2368,3 +2368,226 @@ body {
   transform: scale(0.95);
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 4 — AUTO-REFRESH BAR
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.refresh-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px 6px 12px;
+  margin: 0 0 8px;
+  background: var(--surface2, rgba(0,0,0,0.03));
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(0,0,0,0.07));
+  min-height: 34px;
+}
+[data-theme="dark"] .refresh-bar {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.08);
+}
+
+.refresh-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text3, #9ca3af);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  flex: 1;
+}
+
+.refresh-countdown {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--text2, #6b7280);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  min-width: 32px;
+  text-align: right;
+}
+
+.refresh-btn {
+  background: none;
+  border: 1px solid var(--border, rgba(0,0,0,0.12));
+  border-radius: 7px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text2, #6b7280);
+  transition: background 0.2s, transform 0.2s;
+  flex-shrink: 0;
+}
+.refresh-btn:hover {
+  background: var(--accent, #c8000f);
+  color: white;
+  border-color: var(--accent, #c8000f);
+  transform: rotate(180deg);
+}
+.refresh-btn:active { transform: rotate(180deg) scale(0.9); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 5 — CUSTOMER STATE + TIER BADGES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Shared badge base */
+.cust-state-badge,
+.cust-tier-badge {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 6px;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+/* ── State badges ── */
+.state-active     { background: rgba(22,163,74,.12);  color: #15803d; }
+.state-gone_quiet { background: rgba(245,158,11,.12); color: #b45309; }
+.state-lost       { background: rgba(220,38,38,.10);  color: #b91c1c; }
+.state-no_orders  { background: rgba(107,114,128,.1); color: #6b7280; }
+
+[data-theme="dark"] .state-active     { background: rgba(22,163,74,.18);  color: #4ade80; }
+[data-theme="dark"] .state-gone_quiet { background: rgba(245,158,11,.18); color: #fbbf24; }
+[data-theme="dark"] .state-lost       { background: rgba(220,38,38,.18);  color: #f87171; }
+[data-theme="dark"] .state-no_orders  { background: rgba(255,255,255,.08); color: #9ca3af; }
+
+/* ── Tier badges ── */
+.tier-new         { background: rgba(37,99,235,.10);  color: #1d4ed8; }
+.tier-returning   { background: rgba(139,92,246,.10); color: #7c3aed; }
+.tier-loyal       { background: rgba(168,216,74,.14); color: #3f6212; }
+.tier-big_spender { background: rgba(245,158,11,.14); color: #92400e; }
+.tier-at_risk     { background: rgba(220,38,38,.12);  color: #991b1b; border: 1px solid rgba(220,38,38,.25); }
+
+[data-theme="dark"] .tier-new         { background: rgba(37,99,235,.18);  color: #93c5fd; }
+[data-theme="dark"] .tier-returning   { background: rgba(139,92,246,.18); color: #c4b5fd; }
+[data-theme="dark"] .tier-loyal       { background: rgba(168,216,74,.18); color: #a3e635; }
+[data-theme="dark"] .tier-big_spender { background: rgba(245,158,11,.18); color: #fcd34d; }
+[data-theme="dark"] .tier-at_risk     { background: rgba(220,38,38,.2);   color: #fca5a5; border-color: rgba(220,38,38,.3); }
+
+/* Badge containers inside customer cards */
+.cust-badges,
+.cust-badges-sm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 3px 0 4px;
+}
+.cust-badges-sm .cust-state-badge,
+.cust-badges-sm .cust-tier-badge {
+  font-size: 0.55rem;
+  padding: 1px 5px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 5 — RECOVERY SIGNALS PANEL
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.recovery-panel {
+  background: var(--surface2, rgba(0,0,0,0.02));
+  border: 1px solid var(--border, rgba(0,0,0,0.08));
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin: 0 0 16px;
+}
+[data-theme="dark"] .recovery-panel {
+  background: rgba(255,255,255,0.03);
+  border-color: rgba(255,255,255,0.08);
+}
+
+.recovery-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--text1, #111);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+[data-theme="dark"] .recovery-title { color: var(--text1, #f3f4f6); }
+
+.recovery-section-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--text3, #9ca3af);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.recovery-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border, rgba(0,0,0,0.06));
+}
+.recovery-row:last-child { border-bottom: none; }
+
+.recovery-info { flex: 1; min-width: 0; }
+
+.recovery-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text1, #111);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-theme="dark"] .recovery-name { color: var(--text1, #f3f4f6); }
+
+.recovery-meta {
+  font-size: 0.68rem;
+  color: var(--text3, #9ca3af);
+  margin-top: 1px;
+}
+.recovery-meta strong { color: var(--red, #c8000f); }
+
+.recovery-empty {
+  font-size: 0.78rem;
+  color: var(--text3, #9ca3af);
+  text-align: center;
+  padding: 4px 0;
+}
+
+/* Compact WhatsApp button for recovery rows */
+.btn-wa-xs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #25d366;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 7px;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.2s;
+}
+.btn-wa-xs:hover { opacity: 0.85; }
+
+/* Settings threshold note */
+.settings-threshold-note {
+  font-size: 0.72rem;
+  color: var(--text3, #9ca3af);
+  line-height: 1.5;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  background: rgba(37,99,235,0.06);
+  border-radius: 8px;
+  border-left: 3px solid rgba(37,99,235,0.3);
+}
+[data-theme="dark"] .settings-threshold-note {
+  background: rgba(37,99,235,0.1);
+  border-left-color: rgba(37,99,235,0.5);
+}
