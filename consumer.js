@@ -38,19 +38,33 @@ window.addEventListener('online', function() {
 // Inserts an order + order_items into Supabase.
 // Fire-and-forget — WhatsApp still opens even if this fails.
 
+function generateUUID() {
+    // RFC4122-compliant UUID v4 — works in all browsers including 2018 Android
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0;
+        var v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
 function sendToSupabase(payload) {
     var headers = {
         'Content-Type':  'application/json',
         'apikey':         SUPABASE_ANON_KEY,
         'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-        'Prefer':        'return=representation'
+        'Prefer':        'return=minimal'   // anon INSERT: minimal avoids 401 on SELECT-back
     };
+
+    // Generate order UUID client-side — avoids needing a SELECT-back after insert
+    // (public role has INSERT but no SELECT on orders)
+    var orderId = generateUUID();
 
     // Step 1 — insert the order row
     fetch(SUPABASE_URL + '/rest/v1/orders', {
         method:  'POST',
         headers: headers,
         body: JSON.stringify({
+            id:           orderId,
             project_id:   PROJECT_ID,
             tracking_ref: payload.tracking,
             buyer_name:   payload.name,
@@ -65,12 +79,13 @@ function sendToSupabase(payload) {
             total:        payload.total,
         })
     })
-    .then(function(r) { return r.json(); })
-    .then(function(order) {
-        var orderId = order && order[0] && order[0].id;
-        if (!orderId) return;
+    .then(function(r) {
+        if (!r.ok) {
+            r.text().then(function(t) { console.error('OA order insert failed:', r.status, t); });
+            return;
+        }
 
-        // Step 2 — insert order_items
+        // Step 2 — insert order_items using the same orderId
         var items = [];
         try { items = JSON.parse(payload.items || '[]'); } catch(e) {}
         if (!items.length) return;
@@ -89,13 +104,15 @@ function sendToSupabase(payload) {
             method:  'POST',
             headers: headers,
             body: JSON.stringify(itemRows)
-        }).catch(function() {});
+        }).then(function(r2) {
+            if (!r2.ok) r2.text().then(function(t){ console.error('OA order_items insert failed:', r2.status, t); });
+        }).catch(function(e) { console.error('OA order_items fetch error:', e); });
 
         // Step 3 — log to clients table if heard_from provided
         if (payload.heard_from) {
             fetch(SUPABASE_URL + '/rest/v1/clients', {
                 method:  'POST',
-                headers: Object.assign({}, headers, {'Prefer': 'return=minimal,resolution=ignore-duplicates'}),
+                headers: headers,
                 body: JSON.stringify({
                     project_id:   PROJECT_ID,
                     client_type:  'retail',
@@ -109,7 +126,7 @@ function sendToSupabase(payload) {
             }).catch(function() {});
         }
     })
-    .catch(function() {});
+    .catch(function(e) { console.error('OA order fetch error:', e); });
 }
 
 // ── CART STATE ────────────────────────────────────────────────────────────────
@@ -376,11 +393,12 @@ function resetCart() {
 
 // ── PHONE FORMATTER ───────────────────────────────────────────────────────────
 function formatConPhone(input) {
-    let value = input.value.replace(/\D/g, '');
-    if (value.length > 11) value = value.slice(0, 11);
-    if (value.length > 7)      value = value.slice(0,4) + ' ' + value.slice(4,8) + ' ' + value.slice(8);
-    else if (value.length > 4) value = value.slice(0,4) + ' ' + value.slice(4);
-    input.value = value;
+    // Runs on blur only — avoids cursor repositioning bug on backspace
+    var raw = input.value.replace(/\D/g, '');
+    if (raw.length > 11) raw = raw.slice(0, 11);
+    if (raw.length > 7)      input.value = raw.slice(0,4) + ' ' + raw.slice(4,8) + ' ' + raw.slice(8);
+    else if (raw.length > 4) input.value = raw.slice(0,4) + ' ' + raw.slice(4);
+    else                     input.value = raw;
 }
 
 // ── SEARCHABLE POPOVER ────────────────────────────────────────────────────────
@@ -396,6 +414,9 @@ function handleConSearch(type, query) {
     let items = [];
     if (type === 'state') {
         items = Object.keys(statesAndLGAs).filter(s => s.toLowerCase().includes(query.toLowerCase())).sort();
+        // Auto-set active state when typed text exactly matches a state name
+        var exactMatch = Object.keys(statesAndLGAs).find(s => s.toLowerCase() === query.toLowerCase());
+        if (exactMatch) { conActiveState = exactMatch; }
     } else if (type === 'lga' && conActiveState) {
         items = statesAndLGAs[conActiveState].filter(r => r.toLowerCase().includes(query.toLowerCase()));
     }

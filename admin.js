@@ -207,7 +207,7 @@ function setupSessionRefresh() {
 // Refreshes the currently visible section every 5 minutes.
 // Shows a visible countdown badge. Manual refresh button resets the timer.
 
-var REFRESH_INTERVAL_SECS = 300; // 5 minutes
+var REFRESH_INTERVAL_SECS = 180; // 3 minutes
 
 function startAutoRefresh() {
   clearInterval(APP._refreshTimer);
@@ -238,10 +238,29 @@ function updateCountdownBadge() {
 function manualRefresh() {
   APP._countdownSecs = REFRESH_INTERVAL_SECS;
   updateCountdownBadge();
+  // Visual + haptic feedback on the button itself
+  var btns = document.querySelectorAll('.refresh-btn');
+  btns.forEach(function(btn) {
+    btn.classList.add('refresh-btn-active');
+    setTimeout(function() { btn.classList.remove('refresh-btn-active'); }, 600);
+  });
+  // Haptic on mobile
+  if (navigator.vibrate) navigator.vibrate(40);
   refreshActivePage();
 }
 
+function flashContentArea() {
+  var active = document.querySelector('.page.active');
+  if (!active) return;
+  var body = active.querySelector('.section-body, #items-body, #orders-body, #stock-body, #people-body, #customers-body, #money-body, #settings-body, .metric-grid');
+  if (body) {
+    body.classList.add('refresh-flash');
+    setTimeout(function() { body.classList.remove('refresh-flash'); }, 500);
+  }
+}
+
 function refreshActivePage() {
+  flashContentArea();
   var active = document.querySelector('.page.active');
   if (!active) return;
   var id = active.id;

@@ -2591,3 +2591,28 @@ body {
   background: rgba(37,99,235,0.1);
   border-left-color: rgba(37,99,235,0.5);
 }
+
+/* ── Refresh button active/tap state ── */
+@keyframes refreshSpin {
+  0%   { transform: rotate(0deg) scale(1); }
+  40%  { transform: rotate(200deg) scale(0.88); background: var(--accent, #c8000f); color: white; border-color: var(--accent, #c8000f); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+.refresh-btn-active {
+  animation: refreshSpin 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+  background: var(--accent, #c8000f) !important;
+  color: white !important;
+  border-color: var(--accent, #c8000f) !important;
+}
+
+/* ── Content area flash on refresh ── */
+@keyframes refreshFlash {
+  0%   { opacity: 1; }
+  25%  { opacity: 0.45; }
+  60%  { opacity: 0.8; }
+  100% { opacity: 1; }
+}
+.refresh-flash {
+  animation: refreshFlash 0.48s ease-out forwards;
+  pointer-events: none;
+}
