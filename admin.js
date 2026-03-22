@@ -924,179 +924,6 @@ function getShopPulse() {
   });
 }
 
-  return Promise.all([
-    // Active products
-    sb().from('products').select('id,name,stock_qty,low_stock_alert,cost_price,consumer_price,active').eq('project_id',PROJECT_ID),
-    // Money records this month and last
-    sb().from('money_records').select('month,total_collected,final_profit').eq('project_id',PROJECT_ID),
-    // Pending orders
-    sb().from('orders').select('id,total,created_at').eq('project_id',PROJECT_ID).eq('status','pending'),
-    // Confirmed orders this month
-    sb().from('orders').select('id,total,created_at,buyer_name').eq('project_id',PROJECT_ID).eq('status','confirmed').gte('created_at',monthStart),
-    // Failed orders this month
-    sb().from('orders').select('id').eq('project_id',PROJECT_ID).eq('status','failed').gte('created_at',monthStart),
-    // CRM clients (active stages only)
-    sb().from('clients').select('id,client_type,where_we_are,remind_me_on').eq('project_id',PROJECT_ID).neq('where_we_are','not_interested'),
-    // Clients with outstanding balance
-    sb().from('clients').select('balance_owed').eq('project_id',PROJECT_ID).gt('balance_owed',0),
-    // Settings
-    sb().from('settings').select('key,value').eq('project_id',PROJECT_ID),
-    // Monthly revenue — last 6 months for chart
-    sb().from('money_records').select('month,total_collected').eq('project_id',PROJECT_ID).order('month',{ascending:false}).limit(12),
-    // Confirmed orders all time for customers count + recovery signals
-    sb().from('orders').select('buyer_name').eq('project_id',PROJECT_ID).eq('status','confirmed'),
-    // Customers view — for recovery signals (gone quiet, at-risk big spenders)
-    sb().from('customers').select('id,buyer_name,phone,total_orders,total_spent,last_order_date').eq('project_id',PROJECT_ID),
-  ]).then(function(results) {
-    var products   = (results[0].data||[]);
-    var moneyRows  = (results[1].data||[]);
-    var pending    = (results[2].data||[]);
-    var confirmed  = (results[3].data||[]);
-    var failed     = (results[4].data||[]);
-    var clients    = (results[5].data||[]);
-    var debtors    = (results[6].data||[]);
-    var settRows   = (results[7].data||[]);
-    var chartRows  = (results[8].data||[]);
-    var allOrders  = (results[9].data||[]);
-    var customers  = (results[10].data||[]);
-
-    // Settings map
-    var sett = {};
-    settRows.forEach(function(s){ sett[s.key]=s.value; });
-    var monthlyTarget = parseFloat(sett.monthly_target||0);
-    var lowStockDefault = parseInt(sett.low_stock_default||20);
-
-    // Money aggregates
-    var moneyThisMonth=0, moneyLastMonth=0;
-    moneyRows.forEach(function(r){
-      var amt = parseFloat(r.total_collected)||0;
-      if (r.month===thisMK) moneyThisMonth+=amt;
-      if (r.month===lastMK) moneyLastMonth+=amt;
-    });
-    var moneyChangePct = moneyLastMonth>0 ? Math.round(((moneyThisMonth-moneyLastMonth)/moneyLastMonth)*100) : 0;
-    var totalMoneyIn = moneyRows.reduce(function(s,r){return s+(parseFloat(r.total_collected)||0);},0);
-
-    // Stock aggregates
-    var activeProducts = products.filter(function(p){return p.active;});
-    var stockWorth=0, ifAllSold=0, lowItems=[];
-    activeProducts.forEach(function(p){
-      var qty  = parseInt(p.stock_qty)||0;
-      var cost = parseFloat(p.cost_price)||0;
-      var sell = parseFloat(p.consumer_price)||0;
-      var alert = parseInt(p.low_stock_alert)||lowStockDefault;
-      stockWorth += qty*cost;
-      ifAllSold  += qty*sell;
-      if (qty < alert) lowItems.push({name:p.name, stock:qty, alert_level:alert});
-    });
-    var possibleProfit = ifAllSold - stockWorth;
-
-    // People / CRM
-    var retailC=0, wholesaleC=0, distributorC=0;
-    var today = new Date().toDateString();
-    var overdueFollowups = 0;
-    clients.forEach(function(c){
-      if (c.client_type==='retail')      retailC++;
-      if (c.client_type==='wholesale')   wholesaleC++;
-      if (c.client_type==='distributor') distributorC++;
-      if (c.remind_me_on) {
-        var rd = new Date(c.remind_me_on);
-        if (rd < new Date() && c.where_we_are !== 'not_interested') overdueFollowups++;
-      }
-    });
-
-    // Outstanding balances
-    var peopleStillOwe = debtors.reduce(function(s,r){return s+(parseFloat(r.balance_owed)||0);},0);
-
-    // Orders confirmed today
-    var confirmedToday = confirmed.filter(function(o){
-      return new Date(o.created_at).toDateString()===today;
-    }).length;
-
-    // Unique customers
-    var uniqueCustomers = {};
-    allOrders.forEach(function(o){ if(o.buyer_name) uniqueCustomers[o.buyer_name]=1; });
-
-    // Monthly chart — aggregate by month
-    var chartMap = {};
-    chartRows.forEach(function(r){
-      if (!chartMap[r.month]) chartMap[r.month]=0;
-      chartMap[r.month]+= parseFloat(r.total_collected)||0;
-    });
-    var monthlyChart = Object.keys(chartMap).sort().map(function(m){return {month:m,revenue:chartMap[m]};});
-
-    // Top sellers from confirmed orders this month
-    var sellerMap = {};
-    confirmed.forEach(function(o){
-      var k = o.buyer_name||'Unknown';
-      sellerMap[k] = (sellerMap[k]||0)+1;
-    });
-    var topSellers = Object.keys(sellerMap).map(function(k){return {name:k,qty:sellerMap[k]};})
-      .sort(function(a,b){return b.qty-a.qty;}).slice(0,5);
-
-    // Pulse colours
-    var targetPct = monthlyTarget>0 ? Math.min(100,Math.round((moneyThisMonth/monthlyTarget)*100)) : 0;
-    var moneyPulse  = moneyThisMonth>=monthlyTarget*0.8?'green':moneyThisMonth>0?'yellow':'grey';
-    var stockPulse  = lowItems.length===0?'green':lowItems.length<3?'yellow':'red';
-    var peoplePulse = (retailC+wholesaleC+distributorC)===0?'grey':overdueFollowups>0?'red':'green';
-
-    // ── Recovery signals (Phase 5) ────────────────────────────────────────────
-    var recoveryGoneQuiet = [];
-    var recoveryAtRisk    = [];
-    customers.forEach(function(c) {
-      var cs = getCustomerState(c);
-      if (cs.state === 'gone_quiet') {
-        recoveryGoneQuiet.push({ name: c.buyer_name||'Customer', phone: c.phone||'', days: cs.days, spent: c.total_spent });
-      }
-      if (cs.tier === 'at_risk') {
-        recoveryAtRisk.push({ name: c.buyer_name||'Customer', phone: c.phone||'', days: cs.days, spent: c.total_spent });
-      }
-    });
-    recoveryGoneQuiet.sort(function(a,b){ return b.days - a.days; });
-    recoveryAtRisk.sort(function(a,b){ return (parseFloat(b.spent)||0) - (parseFloat(a.spent)||0); });
-
-    return {success:true, data:{
-      // Money
-      money_in_this_month:  moneyThisMonth,
-      money_in_last_month:  moneyLastMonth,
-      money_change_pct:     moneyChangePct,
-      total_money_in:       totalMoneyIn,
-      monthly_target:       monthlyTarget,
-      target_reached_pct:   targetPct,
-      people_still_owe_you: peopleStillOwe,
-      money_pulse:          moneyPulse,
-      money_message:        moneyChangePct>10?'Money is growing — great month so far.':moneyChangePct<-10?'Revenue is down vs last month. Keep pushing.':'Business is steady this month.',
-      // Stock
-      stock_worth:          stockWorth,
-      if_all_sold:          ifAllSold,
-      possible_profit:      possibleProfit,
-      low_stock_count:      lowItems.length,
-      items_running_low:    lowItems,
-      total_products:       activeProducts.length,
-      stock_pulse:          stockPulse,
-      stock_message:        lowItems.length===0?'All items are well stocked.':'Some items need restocking soon.',
-      // Orders
-      orders_waiting:       pending.length,
-      confirmed_orders:     confirmedToday,
-      failed_orders:        failed.length,
-      total_customers:      Object.keys(uniqueCustomers).length,
-      // People
-      retail_clients:       retailC,
-      wholesale_clients:    wholesaleC,
-      distributor_clients:  distributorC,
-      follow_ups_overdue:   overdueFollowups,
-      people_pulse:         peoplePulse,
-      people_message:       overdueFollowups>0?overdueFollowups+' follow-up(s) overdue.':'All follow-ups are up to date.',
-      // Charts
-      monthly_chart:        monthlyChart,
-      top_sellers:          topSellers,
-      // Recovery signals
-      recovery_gone_quiet:  recoveryGoneQuiet.slice(0,5),
-      recovery_at_risk:     recoveryAtRisk.slice(0,5),
-    }};
-  }).catch(function(e){
-    return {success:false, error:e.message||'Could not load shop data'};
-  });
-}
 
 // ── PRODUCTS ──────────────────────────────────────────────────────────────────
 
@@ -1750,82 +1577,53 @@ function copyHistoryReport(format) {
   var text  = '';
 
   if (format === 'whatsapp') {
-    text  = '📊 *OA SHOP HISTORY REPORT*
-';
-    text += '📅 *Period:* '+label+'
-';
-    text += '━━━━━━━━━━━━━━━━━━━━━━━━
-';
-    text += '💰 *Total Sales:* ₦'+fmtK(d.totalRev)+'
-';
-    text += '✅ *Orders Confirmed:* '+d.totalOrders+'
-';
-    text += '❌ *Orders Fell Through:* '+d.totalFailed+'
-';
-    text += '🤝 *New Leads:* '+d.totalNewLeads+'
-
-';
+    text  = '📊 *OA SHOP HISTORY REPORT*\n';
+    text += '📅 *Period:* '+label+'\n';
+    text += '━━━━━━━━━━━━━━━━━━━━━━━━\n';
+    text += '💰 *Total Sales:* ₦'+fmtK(d.totalRev)+'\n';
+    text += '✅ *Orders Confirmed:* '+d.totalOrders+'\n';
+    text += '❌ *Orders Fell Through:* '+d.totalFailed+'\n';
+    text += '🤝 *New Leads:* '+d.totalNewLeads+'\n';
     if (d.products.length) {
-      text += '📦 *Items Sold:*
-';
-      d.products.forEach(function(p,i){ text += (i+1)+'. '+p.name+' — '+p.qty+' sold (₦'+fmtK(p.revenue)+')
-'; });
-      text += '
-';
+      text += '📦 *Items Sold:*\n';
+      d.products.forEach(function(p,i){ text += (i+1)+'. '+p.name+' — '+p.qty+' sold (₦'+fmtK(p.revenue)+')\n'; });
+      text += '\n';
     }
     if (d.confirmed.length) {
-      text += '🧾 *Order Summary:*
-';
+      text += '🧾 *Order Summary:*\n';
       d.confirmed.slice(0,10).forEach(function(o){
         var dt = o.created_at ? new Date(o.created_at).toLocaleDateString('en-NG') : '';
-        text += '• '+esc(o.buyer_name||'')+' — ₦'+fmtK(o.total)+' ('+dt+')
-';
+        text += '• '+esc(o.buyer_name||'')+' — ₦'+fmtK(o.total)+' ('+dt+')\n';
       });
-      if (d.confirmed.length > 10) text += '...and '+(d.confirmed.length-10)+' more
-';
+      if (d.confirmed.length > 10) text += '...and '+(d.confirmed.length-10)+' more\n';
     }
-    text += '
-_Generated by OA Shop Book_';
+    text += '\n_Generated by OA Shop Book_';
 
   } else if (format === 'csv') {
-    text = 'Date,Customer,Tracking Ref,Type,Amount (₦)
-';
+    text = 'Date,Customer,Tracking Ref,Type,Amount (₦)\n';
     d.confirmed.forEach(function(o){
       var dt = o.created_at ? new Date(o.created_at).toLocaleDateString('en-NG') : '';
-      text += [dt, o.buyer_name||'', o.tracking_ref||'', o.buyer_type||'', parseFloat(o.total)||0].join(',')+'
-';
+      text += [dt, o.buyer_name||'', o.tracking_ref||'', o.buyer_type||'', parseFloat(o.total)||0].join(',')+'\n';
     });
 
   } else {
     // Plain text — good for pasting into Word/spreadsheet notes
-    text  = 'OA SHOP HISTORY — '+label+'
-';
-    text += '='.repeat(40)+'
-';
-    text += 'Total Sales:         ₦'+fmtK(d.totalRev)+'
-';
-    text += 'Orders Confirmed:    '+d.totalOrders+'
-';
-    text += 'Orders Fell Through: '+d.totalFailed+'
-';
-    text += 'New Leads:           '+d.totalNewLeads+'
-
-';
+    text  = 'OA SHOP HISTORY — '+label+'\n';
+    text += '='.repeat(40)+'\n';
+    text += 'Total Sales:         ₦'+fmtK(d.totalRev)+'\n';
+    text += 'Orders Confirmed:    '+d.totalOrders+'\n';
+    text += 'Orders Fell Through: '+d.totalFailed+'\n';
+    text += 'New Leads:           '+d.totalNewLeads+'\n';
     if (d.products.length) {
-      text += 'ITEMS SOLD:
-';
-      d.products.forEach(function(p,i){ text += (i+1)+'. '+p.name+' — '+p.qty+' packs (₦'+fmtK(p.revenue)+')
-'; });
-      text += '
-';
+      text += 'ITEMS SOLD:\n';
+      d.products.forEach(function(p,i){ text += (i+1)+'. '+p.name+' — '+p.qty+' packs (₦'+fmtK(p.revenue)+')\n'; });
+      text += '\n';
     }
     if (d.confirmed.length) {
-      text += 'ORDERS:
-';
+      text += 'ORDERS:\n';
       d.confirmed.forEach(function(o){
         var dt = o.created_at ? new Date(o.created_at).toLocaleDateString('en-NG') : '';
-        text += dt+' | '+esc(o.buyer_name||'')+' | ₦'+fmtK(o.total)+' | '+(o.tracking_ref||'')+'
-';
+        text += dt+' | '+esc(o.buyer_name||'')+' | ₦'+fmtK(o.total)+' | '+(o.tracking_ref||'')+'\n';
       });
     }
   }
