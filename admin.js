@@ -390,7 +390,8 @@ function goto(name, el) {
   if (el) el.classList.add('active');
   var titles = {today:'Shop Today',orders:'Sales & Orders',items:'Items in Shop',
     stock:'My Stock',people:'People Asking',customers:'My Customers',
-    money:'Money Records',settings:'Shop Settings',history:'Shop History'};
+    money:'Money Records',settings:'Shop Settings',history:'Shop History',
+    followups:'Follow-Ups'};
   var tb = document.getElementById('tb-title');
   if (tb) tb.textContent = titles[name] || name;
   var sidebar = document.getElementById('sidebar');
@@ -405,6 +406,7 @@ function goto(name, el) {
   if (name==='money')     loadMoney();
   if (name==='settings')  loadSettings('general');
   if (name==='history')   initHistoryPage();
+  if (name==='followups') loadFollowUps();
 }
 function toggleSidebar(){ var s=document.getElementById('sidebar'); if(s) s.classList.toggle('open'); }
 function updateBottomNavForPage(name){
@@ -1850,9 +1852,16 @@ function initChartStates(){
 }
 function toggleChart(chartId){
   var block=document.getElementById(chartId); if(!block) return;
+  // Don't collapse if a toggle button inside was clicked
   var c=block.classList.toggle('collapsed');
   localStorage.setItem('oa_'+chartId+'_collapsed',c);
 }
+// Prevent toggle strip button clicks from bubbling up to collapse handler
+document.addEventListener('click', function(e){
+  if(e.target.closest('.chart-window-btn')||e.target.closest('.sellers-mode-btn')){
+    e.stopPropagation();
+  }
+});
 
 // ── SHOP TODAY ────────────────────────────────────────────────────────────────
 
@@ -1884,10 +1893,26 @@ function renderPulseRings(d){
   // Money ring — master only
   var moneyCard = document.querySelector('.pulse-card-money');
   if (moneyCard) moneyCard.style.display = APP.role==='master' ? '' : 'none';
-  setPulse('ring-money',moneyC); setPulse('ring-stock',stockC); setPulse('ring-people',peopleC);
-  var ml={green:'FLOWING',yellow:'STEADY',red:'CHECK NOW',grey:'NO DATA'};
-  var sl={green:'STOCKED UP',yellow:'LOW ON SOME',red:'RUNNING DRY',grey:'NO STOCK DATA'};
-  var pl={green:'UP TO DATE',yellow:'NEEDS FOLLOW-UP',red:'OVERDUE',grey:'NO LEADS YET'};
+
+  // Set ring colour class (drives border + glow animation)
+  setPulse('ring-money', moneyC);
+  setPulse('ring-stock', stockC);
+  setPulse('ring-people', peopleC);
+
+  // Set SVG stroke colour to match ring state
+  ['ring-money','ring-stock','ring-people'].forEach(function(id){
+    var ring = document.getElementById(id);
+    if (!ring) return;
+    var svg = ring.querySelector('svg');
+    if (!svg) return;
+    var colMap = {green:'#16a34a', yellow:'#d97706', red:'#c8000f', grey:'#9ca3af'};
+    var col = id==='ring-money' ? colMap[moneyC] : id==='ring-stock' ? colMap[stockC] : colMap[peopleC];
+    svg.style.stroke = col;
+  });
+
+  var ml={green:'MONEY FLOWING',yellow:'STEADY',red:'CHECK NOW',grey:'NO DATA YET'};
+  var sl={green:'ALL STOCKED',yellow:'SOME LOW',red:'RUNNING DRY',grey:'NO STOCK DATA'};
+  var pl={green:'UP TO DATE',yellow:'FOLLOW UP',red:'OVERDUE',grey:'NO LEADS YET'};
   setStatusText('pulse-money-label',ml[moneyC]||ml.grey,moneyC);
   setStatusText('pulse-stock-label',sl[stockC]||sl.grey,stockC);
   setStatusText('pulse-people-label',pl[peopleC]||pl.grey,peopleC);
@@ -1936,46 +1961,72 @@ function drow(label,val){ return '<div class="drawer-row"><span>'+label+'</span>
 
 function renderMetricCards(d){
   var grid=document.getElementById('metric-grid'); if(!grid) return;
-  var todayAmt = d.today_sales_amount||0;
-  var todayQty = d.today_sales_qty||0;
-  var todayCnt = d.today_orders_count||0;
-  var waiting  = d.orders_waiting||0;
-  var failed   = d.failed_orders||0;
-  var lowCount = d.low_stock_count||0;
-  var owedAmt  = d.people_still_owe_you||0;
-  var overdue  = d.follow_ups_overdue||0;
+
+  // 1. Cash In Today — money confirmed today from orders
+  var todayAmt  = d.today_sales_amount||0;
+  var todayCnt  = d.today_orders_count||0;
+
+  // 2. Needs Your Attention — pending orders right now
+  var waiting   = d.orders_waiting||0;
+  var failed    = d.failed_orders||0;
+
+  // 3. Running Low — items below alert level
+  var lowCount  = d.low_stock_count||0;
+  var owedAmt   = d.people_still_owe_you||0;
+  var overdue   = d.follow_ups_overdue||0;
+  var lowNames  = (d.items_running_low||[]).map(function(i){return i.name;}).slice(0,2).join(', ');
+
+  // 4. This Month Progress — vs last month (simple up/down)
+  var thisMonth = d.money_in_this_month||0;
+  var chgPct    = d.money_change_pct||0;
+  var chgTxt    = chgPct>0 ? '+'+chgPct+'% vs last month' : chgPct<0 ? chgPct+'% vs last month' : 'Same as last month';
+  var chgCls    = chgPct>0 ? 'mc-trend-up' : chgPct<0 ? 'mc-trend-down' : '';
+
   grid.innerHTML =
-    mCard('mc-today',
-      todayAmt>0 ? '₦'+fmtK(todayAmt) : '₦0',
-      "TODAY\'S SALES",
-      todayQty+' unit'+(todayQty!==1?'s':'')+' sold · '+todayCnt+' order'+(todayCnt!==1?'s':'')+' confirmed',
-      todayAmt===0 ? 'No sales confirmed yet today' : null
+    mCard('mc-cash',
+      '₦'+fmtK(todayAmt),
+      'CASH IN TODAY',
+      todayCnt>0 ? todayCnt+' order'+(todayCnt!==1?'s':'')+' confirmed' : 'No confirmed sales yet',
+      todayAmt===0 ? 'Tap Orders to confirm pending ones' : null,
+      // icon: wallet/cash
+      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>'
     )+
-    mCard('mc-orders',
+    mCard('mc-pending',
       String(waiting),
-      'ORDERS WAITING',
-      waiting===0 ? 'All clear — nothing pending' : waiting+' order'+(waiting!==1?'s':'')+' need your decision',
-      failed>0 ? failed+' fell through this month' : null
+      'WAITING FOR YOU',
+      waiting===0 ? 'No pending orders' : 'Tap to confirm or reject',
+      failed>0 ? failed+' fell through this month' : null,
+      // icon: inbox/tray
+      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>'
     )+
     mCard('mc-stock',
       String(lowCount),
-      lowCount===0 ? 'STOCK HEALTHY' : 'ITEMS RUNNING LOW',
-      lowCount===0 ? 'All '+(d.total_products||0)+' items above alert level' : 'Stock worth: ₦'+fmtK(d.stock_worth||0),
-      lowCount>0 ? 'Tap to see which items' : null
+      lowCount===0 ? 'STOCK ALL GOOD' : 'RESTOCK NEEDED',
+      lowCount===0 ? 'All '+(d.total_products||0)+' items above alert' : lowNames||'Check items below',
+      lowCount>0 ? 'Tap Stock to restock now' : null,
+      // icon: package/box
+      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>'
     )+
     mCard('mc-owed',
       owedAmt>0 ? '₦'+fmtK(owedAmt) : '₦0',
       'PEOPLE OWE YOU',
-      owedAmt===0 ? 'No outstanding balances' : 'Collect before month end',
-      overdue>0 ? overdue+' follow-up'+(overdue!==1?'s':'')+' overdue' : null
+      owedAmt===0 ? 'No outstanding balances' : overdue+' follow-up'+(overdue!==1?'s':'')+' overdue',
+      owedAmt>0 ? 'Collect before month end' : null,
+      // icon: hand with coin / payment
+      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+      owedAmt>0 ? 'mc-owed-alert' : ''
     );
 }
-function mCard(cls,val,label,sub1,sub2){
-  return '<div class="metric-card '+cls+'" onclick="toggleMcDetail(this)">'+
-    '<div class="mc-val">'+val+'</div><div class="mc-label">'+label+'</div>'+
+function mCard(cls, val, label, sub1, sub2, icon, extraCls){
+  return '<div class="metric-card '+cls+(extraCls?' '+extraCls:'')+'" onclick="toggleMcDetail(this)">'+
+    '<div class="mc-head">'+
+      '<div class="mc-icon-wrap">'+(icon||'')+'</div>'+
+      '<div class="mc-val">'+val+'</div>'+
+    '</div>'+
+    '<div class="mc-label">'+label+'</div>'+
     '<div class="mc-detail">'+
-      (sub1?'<div>'+sub1+'</div>':'')+
-      (sub2?'<div style="margin-top:4px;color:var(--red)">'+sub2+'</div>':'')+
+      (sub1?'<div class="mc-sub1">'+sub1+'</div>':'')+
+      (sub2?'<div class="mc-sub2">'+sub2+'</div>':'')+
     '</div></div>';
 }
 function toggleMcDetail(card){ var det=card.querySelector('.mc-detail'); if(det) det.classList.toggle('open'); }
@@ -2019,12 +2070,15 @@ function renderTopSellers(d){
     return;
   }
   var max=sellers[0].qty||1;
+  // Show product name + qty only — clean, no revenue clutter
   el.innerHTML=sellers.map(function(s){
     var w=Math.round((s.qty/max)*100);
     return '<div class="hbc-row">'+
-      '<div class="hbc-name-wrap"><div class="hbc-name">'+esc(s.name)+'</div>'+
-        '<div class="hbc-sub">'+s.qty+' sold · ₦'+fmtK(s.revenue)+'</div></div>'+
-      '<div class="hbc-bar-wrap"><div class="hbc-bar" style="width:'+w+'%"></div></div>'+
+      '<div class="hbc-name-wrap">'+
+        '<div class="hbc-name">'+esc(s.name)+'</div>'+
+        '<div class="hbc-qty-badge">'+s.qty+' sold</div>'+
+      '</div>'+
+      '<div class="hbc-bar-wrap"><div class="hbc-bar" style="width:'+w+'%"><span class="hbc-pct">'+w+'%</span></div></div>'+
     '</div>';
   }).join('');
 }
@@ -2033,7 +2087,55 @@ function setSellersMode(mode,btn){
   APP._sellersMode=mode;
   document.querySelectorAll('.sellers-mode-btn').forEach(function(b){b.classList.remove('active');});
   if(btn) btn.classList.add('active');
-  renderTopSellers(APP.pulseData||{});
+  var rangeDiv=document.getElementById('sellers-date-range');
+  if(rangeDiv){
+    if(mode==='range'){ rangeDiv.classList.remove('hidden'); }
+    else { rangeDiv.classList.add('hidden'); }
+  }
+  if(mode==='range'){
+    loadSellersByRange();
+  } else {
+    renderTopSellers(APP.pulseData||{});
+  }
+}
+
+function loadSellersByRange(){
+  var fromEl = document.getElementById('sellers-range-from');
+  var toEl   = document.getElementById('sellers-range-to');
+  var el     = document.getElementById('hbar-sellers');
+  if (!fromEl||!toEl||!el) return;
+  var fromVal = fromEl.value;
+  var toVal   = toEl.value;
+  if (!fromVal||!toVal){ el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">Pick a date range above</div>'; return; }
+  el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">Loading…</div>';
+  var fromISO = fromVal+'T00:00:00';
+  var toISO   = toVal+'T23:59:59';
+  sb().from('orders')
+    .select('order_items(product_name,qty)')
+    .eq('project_id',PROJECT_ID).eq('status','confirmed')
+    .gte('created_at',fromISO).lte('created_at',toISO)
+    .then(function(r){
+      var map={};
+      (r.data||[]).forEach(function(o){
+        (o.order_items||[]).forEach(function(i){
+          var k=i.product_name||'Unknown';
+          map[k]=(map[k]||0)+(parseInt(i.qty)||1);
+        });
+      });
+      var sellers=Object.keys(map).map(function(k){return {name:k,qty:map[k]};}).sort(function(a,b){return b.qty-a.qty;}).slice(0,8);
+      if(!sellers.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No confirmed sales in this period</div>';return;}
+      var max=sellers[0].qty||1;
+      el.innerHTML=sellers.map(function(s){
+        var w=Math.round((s.qty/max)*100);
+        return '<div class="hbc-row">'+
+          '<div class="hbc-name-wrap">'+
+            '<div class="hbc-name">'+esc(s.name)+'</div>'+
+            '<div class="hbc-qty-badge">'+s.qty+' sold</div>'+
+          '</div>'+
+          '<div class="hbc-bar-wrap"><div class="hbc-bar" style="width:'+w+'%"><span class="hbc-pct">'+w+'%</span></div></div>'+
+        '</div>';
+      }).join('');
+    }).catch(function(){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">Error loading data</div>';});
 }
 
 
@@ -2068,8 +2170,9 @@ function renderRecoverySignals(d) {
   var ar = d.recovery_at_risk    || [];
 
   if (!gq.length && !ar.length) {
-    panel.innerHTML = '<div class="recovery-empty">✅ No recovery actions needed right now.</div>';
-    panel.classList.remove('hidden');
+    // No signals — hide the panel completely. No need to show "all clear" every time.
+    panel.classList.add('hidden');
+    panel.innerHTML = '';
     return;
   }
 
@@ -2321,4 +2424,348 @@ function sendWaybill(){
       closeModal('modal-delivery'); toast('Waybill sent to driver!','good'); loadOrders('confirmed');
     },600);
   });
+}
+
+// ── FOLLOW-UP TRACKER ─────────────────────────────────────────────────────────
+// Aggregates all action items from orders, clients, and customers into one view.
+// Admin can send follow-up, promo, or retention messages via WhatsApp.
+
+var _WA_TEMPLATES = {
+  followup_order:   'Hello {name}! 👋 This is OA Drinks & Snacks. We noticed your order {ref} is still pending. Ready to confirm? Reply YES or tap the link to place your order. 🙏',
+  followup_payment: 'Hello {name}, just a friendly reminder from OA Drinks & Snacks. You have an outstanding balance of ₦{amount}. Kindly settle at your earliest convenience. Thank you! 🙏',
+  followup_enquiry: 'Hello {name}! 👋 You reached out about our products. Are you still interested? We have fresh stock available — Zobo, Tiger Nut Milk, Chin Chin, Kulikuli. Reply to order or ask any questions!',
+  promo_general:    'Hello {name}! 🎉 Special offer from OA Drinks & Snacks! Order 5+ packs of any product and get 10% off your total. Fresh, natural, delivered to you. WhatsApp us now to order!',
+  retention_quiet:  'Hello {name}! 😊 We miss you at OA Drinks & Snacks! It\'s been a while since your last order. Come back and enjoy our fresh Zobo, Tiger Nut Milk, and more. Special discount waiting for you!',
+  fell_through:     'Hello {name}! This is OA Drinks & Snacks. We saw your order {ref} did not go through. Was there a problem? We\'d love to help — reply to this message and we\'ll sort it out quickly. 🙏',
+};
+
+function buildWaTemplateMsg(templateKey, vars) {
+  var msg = _WA_TEMPLATES[templateKey] || '';
+  Object.keys(vars||{}).forEach(function(k){ msg = msg.replace(new RegExp('{'+k+'}','g'), vars[k]||''); });
+  return msg;
+}
+
+function waLink(phone, msg) {
+  var num = (phone||'').replace(/\D/g,'');
+  if (num.startsWith('0')) num = '234'+num.slice(1);
+  if (!num) return null;
+  return 'https://wa.me/'+num+'?text='+encodeURIComponent(msg);
+}
+
+function loadFollowUps() {
+  renderRefreshBar('followups');
+  var el = document.getElementById('followups-body');
+  if (!el) return;
+  el.innerHTML = '<div class="loading-msg">Loading follow-ups…</div>';
+
+  var now        = new Date();
+  var thirtyDays = new Date(now); thirtyDays.setDate(thirtyDays.getDate()-30);
+  var thirtyISO  = thirtyDays.toISOString();
+
+  Promise.all([
+    // Pending orders — need decision
+    sb().from('orders').select('id,tracking_ref,buyer_name,phone,total,created_at,buyer_type').eq('project_id',PROJECT_ID).eq('status','pending').order('created_at',{ascending:false}),
+    // Fell-through orders — last 30 days
+    sb().from('orders').select('id,tracking_ref,buyer_name,phone,total,created_at,reason,buyer_type').eq('project_id',PROJECT_ID).eq('status','failed').gte('created_at',thirtyISO).order('created_at',{ascending:false}),
+    // Active CRM leads with overdue follow-ups
+    sb().from('clients').select('id,client_type,contact_name,shop_name,phone,where_we_are,remind_me_on,balance_owed').eq('project_id',PROJECT_ID).neq('where_we_are','not_interested').lte('remind_me_on',now.toISOString().slice(0,10)),
+    // Clients with outstanding balance
+    sb().from('clients').select('id,client_type,contact_name,shop_name,phone,balance_owed').eq('project_id',PROJECT_ID).gt('balance_owed',0),
+    // Gone-quiet customers (use APP.pulseData if loaded)
+  ]).then(function(results){
+    var pending  = results[0].data||[];
+    var failed   = results[1].data||[];
+    var overdue  = results[2].data||[];
+    var debtors  = results[3].data||[];
+    // Gone quiet from pulseData
+    var quiet    = (APP.pulseData && APP.pulseData.recovery_gone_quiet)||[];
+
+    var sections = [];
+
+    if (pending.length) {
+      sections.push(renderFuSection(
+        'Orders Waiting for Your Decision',
+        'pending-orders',
+        pending.map(function(o){
+          var msg = buildWaTemplateMsg('followup_order',{name:o.buyer_name||'Customer',ref:o.tracking_ref||''});
+          var link = waLink(o.phone,msg);
+          return fuRow(o.buyer_name||'',o.phone||'',
+            'Placed '+fmtDateTime(o.created_at),
+            '₦'+fmtK(o.total),
+            link, 'Follow Up', 'followup_order',
+            o.buyer_name||'', o.tracking_ref||'', o.phone||'', ''
+          );
+        })
+      ));
+    }
+
+    if (failed.length) {
+      sections.push(renderFuSection(
+        'Fell Through — Try Again',
+        'fell-through',
+        failed.map(function(o){
+          var msg = buildWaTemplateMsg('fell_through',{name:o.buyer_name||'Customer',ref:o.tracking_ref||''});
+          var link = waLink(o.phone,msg);
+          return fuRow(o.buyer_name||'',o.phone||'',
+            'Fell through '+(o.reason?'· '+o.reason:''),
+            '₦'+fmtK(o.total),
+            link, 'Win Back', 'fell_through',
+            o.buyer_name||'', o.tracking_ref||'', o.phone||'', ''
+          );
+        })
+      ));
+    }
+
+    if (overdue.length) {
+      sections.push(renderFuSection(
+        'Overdue Follow-Ups — People Asking',
+        'overdue-leads',
+        overdue.map(function(c){
+          var name = c.contact_name||c.shop_name||'Customer';
+          var msg  = buildWaTemplateMsg('followup_enquiry',{name:name});
+          var link = waLink(c.phone,msg);
+          var typLabel = {retail:'Small Shop',wholesale:'Wholesaler',distributor:'Distributor'}[c.client_type]||c.client_type||'';
+          return fuRow(name,c.phone||'',
+            typLabel+' · Overdue since '+(c.remind_me_on||''),
+            null, link, 'Follow Up', 'followup_enquiry',
+            name, '', c.phone||'', ''
+          );
+        })
+      ));
+    }
+
+    if (debtors.length) {
+      sections.push(renderFuSection(
+        'Outstanding Balances — Collect Now',
+        'debtors',
+        debtors.map(function(c){
+          var name = c.contact_name||c.shop_name||'Customer';
+          var msg  = buildWaTemplateMsg('followup_payment',{name:name,amount:fmtK(c.balance_owed)});
+          var link = waLink(c.phone,msg);
+          return fuRow(name,c.phone||'',
+            'Owes ₦'+fmtK(c.balance_owed),
+            '₦'+fmtK(c.balance_owed),
+            link, 'Request Payment', 'followup_payment',
+            name, '', c.phone||'', fmtK(c.balance_owed)
+          );
+        })
+      ));
+    }
+
+    if (quiet.length) {
+      sections.push(renderFuSection(
+        'Gone Quiet — Win Them Back',
+        'gone-quiet',
+        quiet.map(function(c){
+          var msg  = buildWaTemplateMsg('retention_quiet',{name:c.name||'Customer'});
+          var link = waLink(c.phone,msg);
+          return fuRow(c.name||'',c.phone||'',
+            'Silent for '+c.days+' days · spent ₦'+fmtK(c.spent),
+            null, link, 'Retention', 'retention_quiet',
+            c.name||'', '', c.phone||'', ''
+          );
+        })
+      ));
+    }
+
+    if (!sections.length) {
+      el.innerHTML = '<div class="fu-empty"><svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.25;margin-bottom:10px"><polyline points="20 6 9 17 4 12"/></svg><div>All follow-ups are up to date. Great work!</div></div>';
+      return;
+    }
+
+    el.innerHTML = sections.join('');
+  }).catch(function(e){
+    el.innerHTML='<div class="loading-msg">Error: '+esc(e.message||'')+'</div>';
+  });
+}
+
+function renderFuSection(title, cls, rows){
+  return '<div class="fu-section fu-'+cls+'">'+
+    '<div class="fu-section-title">'+title+'</div>'+
+    '<div class="fu-rows">'+rows.join('')+'</div>'+
+  '</div>';
+}
+
+function fuRow(name, phone, meta, amount, waUrl, btnLabel, templateKey, tplName, tplRef, tplPhone, tplAmount){
+  var waBtn = waUrl
+    ? '<a class="btn-wa-fu" href="'+waUrl+'" target="_blank">'+
+        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>'+
+        esc(btnLabel)+
+      '</a>'
+    : '';
+  var customBtn = phone
+    ? '<button class="btn-wa-custom" onclick="openCustomMsgModal(\''+esc(templateKey)+'\',\''+esc(tplName)+'\',\''+esc(tplRef)+'\',\''+esc(tplPhone)+'\',\''+esc(tplAmount)+'\')">Custom</button>'
+    : '';
+  return '<div class="fu-row">'+
+    '<div class="fu-avatar"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>'+
+    '<div class="fu-info">'+
+      '<div class="fu-name">'+esc(name)+'</div>'+
+      '<div class="fu-meta">'+esc(meta)+(amount?'<span class="fu-amount"> · '+esc(amount)+'</span>':'')+'</div>'+
+    '</div>'+
+    '<div class="fu-actions">'+waBtn+customBtn+'</div>'+
+  '</div>';
+}
+
+function openCustomMsgModal(templateKey, name, ref, phone, amount){
+  var modal = document.getElementById('modal-custom-msg');
+  if(!modal) return;
+  document.getElementById('custom-msg-phone').value = phone;
+  var msg = buildWaTemplateMsg(templateKey,{name:name,ref:ref,amount:amount});
+  document.getElementById('custom-msg-text').value = msg;
+  modal.classList.remove('hidden');
+}
+
+function sendCustomMsg(){
+  var phone = document.getElementById('custom-msg-phone').value;
+  var msg   = document.getElementById('custom-msg-text').value.trim();
+  if(!phone||!msg){ toast('Phone and message required','bad'); return; }
+  var link = waLink(phone, msg);
+  if(!link){ toast('Invalid phone number','bad'); return; }
+  window.open(link,'_blank');
+  closeModal('modal-custom-msg');
+}
+
+// ── MISSING RECEIPT + DATETIME FUNCTIONS ─────────────────────────────────────
+// These were referenced in renderOrderCards but need to exist as globals.
+
+function fmtDateTime(iso){
+  if(!iso) return '—';
+  var d = new Date(iso);
+  return d.toLocaleDateString('en-NG',{day:'2-digit',month:'short',year:'numeric'})+
+         ' · '+d.toLocaleTimeString('en-NG',{hour:'2-digit',minute:'2-digit',hour12:true});
+}
+
+function buildReceiptWaMsg(o, extraComment){
+  var items=[];
+  try{var p=JSON.parse(o.items_json||'[]');if(Array.isArray(p))items=p;}catch(e){}
+  var msg = '*OA DRINKS & SNACKS — ORDER RECEIPT*\n';
+  msg += '———————————————————\n';
+  msg += 'Ref: '+(o.tracking_ref||o.id||'')+'\n';
+  msg += 'Customer: '+(o.buyer_name||o.name||'')+'\n';
+  msg += 'Phone: '+(o.phone||'')+'\n';
+  if(o.address||o.state) msg += 'Address: '+((o.address||'')+', '+(o.lga||'')+', '+(o.state||'')).replace(/^,\s*/,'').replace(/,\s*,/g,',')+'\n';
+  msg += 'Date: '+fmtDateTime(o.decided_at||o.created_at)+'\n';
+  msg += '———————————————————\n';
+  if(items.length){
+    msg += '*Items:*\n';
+    items.forEach(function(i){ msg += '  '+(i.qty||1)+'x '+(i.name||'')+' — ₦'+(((i.qty||1)*(i.price||0)).toLocaleString('en-NG'))+'\n'; });
+    msg += '———————————————————\n';
+  }
+  msg += '*TOTAL: ₦'+((parseFloat(o.total)||0).toLocaleString('en-NG'))+'*\n';
+  if(extraComment) msg += '\n'+extraComment+'\n';
+  msg += '\nThank you for ordering from OA Drinks & Snacks! 🙏';
+  return msg;
+}
+
+function openReceiptModal(orderId){
+  var modal=document.getElementById('modal-receipt');
+  var hiddenId=document.getElementById('receipt-order-id');
+  if(!modal||!hiddenId) return;
+  hiddenId.value=orderId;
+  var commentEl=document.getElementById('receipt-extra-comment');
+  if(commentEl) commentEl.value='';
+  modal.classList.remove('hidden');
+  previewReceipt();
+}
+
+function previewReceipt(){
+  var orderId=document.getElementById('receipt-order-id').value;
+  var comment=(document.getElementById('receipt-extra-comment').value||'').trim();
+  var allOrders=APP._lastLoadedOrders||[];
+  var o=allOrders.filter(function(x){return x.id===orderId;})[0];
+  var preview=document.getElementById('receipt-preview');
+  if(!o||!preview) return;
+  preview.textContent=buildReceiptWaMsg(o,comment);
+}
+
+function sendReceiptViaWa(){
+  var orderId=document.getElementById('receipt-order-id').value;
+  var comment=(document.getElementById('receipt-extra-comment').value||'').trim();
+  var allOrders=APP._lastLoadedOrders||[];
+  var o=allOrders.filter(function(x){return x.id===orderId;})[0];
+  if(!o){toast('Order not found','bad');return;}
+  var waNum=(o.phone||'').replace(/\D/g,'');
+  if(waNum.startsWith('0')) waNum='234'+waNum.slice(1);
+  if(!waNum){toast('No phone number on this order','bad');return;}
+  var msg=buildReceiptWaMsg(o,comment);
+  window.open('https://wa.me/'+waNum+'?text='+encodeURIComponent(msg),'_blank');
+  closeModal('modal-receipt');
+}
+
+// ── DEBT CLOSURE ──────────────────────────────────────────────────────────────
+// Extends recordPayment with:
+// 1. markDebtPaid(clientId, name) — closes the full balance in one tap
+// 2. writeOffDebt(clientId, name, amount) — admin forgives debt, logs to audit
+// Both refresh People Asking + Follow-Ups + Today after completing.
+
+function markDebtPaid(clientId, name, currentBalance) {
+  if (!confirm('Mark '+name+' as fully paid? This will set their balance to ₦0.')) return;
+  sbCall('recordPayment',{
+    client_id: clientId,
+    amount:    currentBalance,
+    done_by:   APP.name
+  }).then(function(res){
+    if(res.success){
+      toast(name+' — fully paid. Balance cleared.','good');
+      writeAudit('debt_closed', name+' balance cleared in full — ₦'+fmt(currentBalance),'client',clientId);
+      _refreshAfterDebt();
+    } else {
+      toast('Error: '+(res.error||''),'bad');
+    }
+  });
+}
+
+function writeOffDebt(clientId, name, currentBalance) {
+  if (!confirm('Write off ₦'+fmt(currentBalance)+' owed by '+name+'?\n\nThis forgives the debt and records a write-off in your audit log.')) return;
+  // Set balance to 0 without recording a cash payment — log as write-off
+  Promise.all([
+    sb().from('clients').update({balance_owed:0, updated_at:'now()'})
+      .eq('id',clientId).eq('project_id',PROJECT_ID),
+    sb().from('payments').insert({
+      project_id:     PROJECT_ID,
+      client_id:      clientId,
+      client_name:    name,
+      amount:         0,
+      balance_before: currentBalance,
+      balance_after:  0,
+      done_by:        APP.userId||null,
+      done_by_name:   APP.name||null,
+      notes:          'WRITE-OFF — debt forgiven by '+APP.name,
+    })
+  ]).then(function(){
+    writeAudit('debt_writeoff', name+' — ₦'+fmt(currentBalance)+' written off by '+APP.name,'client',clientId);
+    toast(name+' — debt written off and recorded.','good');
+    _refreshAfterDebt();
+  }).catch(function(){
+    toast('Error writing off debt','bad');
+  });
+}
+
+function openPartialPaymentModal(clientId, name, currentBalance) {
+  var modal = document.getElementById('modal-payment');
+  if(!modal) return;
+
+  document.getElementById('pay-client-id').value = clientId;
+  document.getElementById('pay-sheet').value = APP.currentPeopleTab||'retail';
+
+  var sub = document.getElementById('pay-sub');
+  if(sub) sub.innerHTML =
+    '<strong>'+esc(name)+'</strong> currently owes <strong style="color:var(--red)">₦'+fmt(currentBalance)+'</strong>';
+
+  // Wire the static HTML buttons to current clientId/name/balance
+  var closeBtn = document.getElementById('debt-close-btn');
+  var writeBtn = document.getElementById('debt-writeoff-btn');
+  if(closeBtn) closeBtn.onclick = function(){ closeModal('modal-payment'); markDebtPaid(clientId, name, currentBalance); };
+  if(writeBtn) writeBtn.onclick = function(){ closeModal('modal-payment'); writeOffDebt(clientId, name, currentBalance); };
+
+  document.getElementById('pay-amount').value = '';
+  modal.classList.remove('hidden');
+}
+
+function _refreshAfterDebt(){
+  // Refresh all sections that show balance data
+  loadPeople(APP.currentPeopleTab);
+  loadToday();
+  var active = document.querySelector('.page.active');
+  if(active && active.id==='page-followups') loadFollowUps();
 }

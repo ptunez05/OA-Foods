@@ -2989,3 +2989,376 @@ body {
   border-color: rgba(255,255,255,0.12);
   color: var(--text1);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   METRIC CARDS — REDESIGNED WITH SVG ICONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.mc-icon-wrap {
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  background: rgba(200,0,15,0.08);
+}
+.mc-icon-wrap svg { stroke: var(--accent,#c8000f); }
+
+/* Per-card icon colours */
+.mc-cash    .mc-icon-wrap { background: rgba(22,163,74,.1);  }
+.mc-cash    .mc-icon-wrap svg { stroke: #16a34a; }
+.mc-pending .mc-icon-wrap { background: rgba(245,158,11,.1); }
+.mc-pending .mc-icon-wrap svg { stroke: #d97706; }
+.mc-stock   .mc-icon-wrap { background: rgba(37,99,235,.1);  }
+.mc-stock   .mc-icon-wrap svg { stroke: #2563eb; }
+.mc-owed    .mc-icon-wrap { background: rgba(200,0,15,.08);  }
+.mc-owed    .mc-icon-wrap svg { stroke: var(--accent,#c8000f); }
+.mc-owed-alert .mc-icon-wrap { background: rgba(200,0,15,.14); }
+
+[data-theme="dark"] .mc-cash    .mc-icon-wrap { background: rgba(22,163,74,.18); }
+[data-theme="dark"] .mc-pending .mc-icon-wrap { background: rgba(245,158,11,.18); }
+[data-theme="dark"] .mc-stock   .mc-icon-wrap { background: rgba(37,99,235,.18); }
+[data-theme="dark"] .mc-owed    .mc-icon-wrap { background: rgba(200,0,15,.18); }
+
+/* Override old mc-money/mc-people/mc-month gradient strips */
+.metric-card.mc-cash::after   { background: linear-gradient(90deg, #16a34a 0%, #22c55e 100%); }
+.metric-card.mc-pending::after{ background: var(--gradient-warm); }
+.metric-card.mc-stock::after  { background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%); }
+.metric-card.mc-owed::after   { background: var(--gradient-primary); }
+.metric-card.mc-owed-alert::after { background: linear-gradient(90deg, #c8000f 0%, #e8192a 100%); }
+
+.mc-sub1 { font-size: 0.72rem; color: var(--text2,#6b7280); line-height: 1.4; }
+.mc-sub2 { font-size: 0.7rem;  color: var(--red,#c8000f);   line-height: 1.4; margin-top: 3px; }
+.mc-trend-up   .mc-icon-wrap svg { stroke: #16a34a; }
+.mc-trend-down .mc-icon-wrap svg { stroke: #c8000f; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ORDER CARDS — TIMESTAMPS + TYPE BADGE + RECEIPT BUTTON
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.order-head-left { flex: 1; min-width: 0; }
+.order-ref-row   { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 2px; }
+.order-type-badge {
+  font-size: 0.58rem; font-weight: 800;
+  padding: 2px 6px; border-radius: 5px;
+  background: rgba(37,99,235,.1); color: #1d4ed8;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+[data-theme="dark"] .order-type-badge { background: rgba(37,99,235,.2); color: #93c5fd; }
+
+.order-meta-row {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  margin: 4px 0 3px;
+}
+.order-meta-item {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 0.72rem; color: var(--text2,#6b7280); font-weight: 600;
+}
+.order-meta-item svg { stroke: currentColor; flex-shrink: 0; }
+
+.order-timestamps {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-bottom: 6px;
+}
+.order-ts {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 0.65rem; color: var(--text3,#9ca3af); font-weight: 600;
+}
+.order-ts svg { stroke: currentColor; flex-shrink: 0; }
+.order-ts-confirmed { color: #16a34a; }
+[data-theme="dark"] .order-ts-confirmed { color: #4ade80; }
+
+.order-fail-reason {
+  font-size: 0.72rem; color: var(--text3,#9ca3af);
+  font-style: italic; padding: 2px 0;
+}
+
+/* WhatsApp receipt button */
+.btn-wa-receipt {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 12px; border-radius: 9px;
+  background: linear-gradient(135deg, #25d366 0%, #128c4a 100%);
+  color: white; font-size: 0.72rem; font-weight: 800;
+  border: none; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(37,211,102,0.35);
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+.btn-wa-receipt svg { stroke: white; flex-shrink: 0; }
+.btn-wa-receipt:hover { box-shadow: 0 4px 14px rgba(37,211,102,0.5); transform: translateY(-1px); }
+.btn-wa-receipt:active { transform: scale(0.96); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   WHATSAPP BUTTONS — UNIFIED REALISM STYLE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Base WA button used everywhere */
+.btn-wa-cta {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px; border-radius: 8px;
+  background: linear-gradient(135deg, #25d366 0%, #128c4a 100%);
+  color: white !important; font-size: 0.72rem; font-weight: 800;
+  border: none; cursor: pointer; text-decoration: none;
+  box-shadow: 0 2px 8px rgba(37,211,102,0.3);
+  transition: all 0.2s ease;
+  white-space: nowrap; flex-shrink: 0;
+}
+.btn-wa-cta svg { stroke: white; flex-shrink: 0; }
+.btn-wa-cta:hover { box-shadow: 0 4px 14px rgba(37,211,102,0.5); transform: translateY(-1px); }
+.btn-wa-cta:active { transform: scale(0.96); }
+
+/* Large send button in modals */
+.btn-wa-send {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 20px; border-radius: 12px;
+  background: linear-gradient(135deg, #25d366 0%, #128c4a 100%);
+  color: white; font-size: 0.88rem; font-weight: 800;
+  border: none; cursor: pointer;
+  box-shadow: 0 4px 16px rgba(37,211,102,0.4);
+  transition: all 0.2s ease;
+}
+.btn-wa-send svg { stroke: white; flex-shrink: 0; }
+.btn-wa-send:hover { box-shadow: 0 6px 22px rgba(37,211,102,0.55); transform: translateY(-1px); }
+.btn-wa-send:active { transform: scale(0.97); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CHART BLOCKS — RESTRUCTURED FOR ALWAYS-VISIBLE TOGGLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.chart-block-top {
+  border-bottom: 1px solid var(--border, rgba(0,0,0,0.07));
+}
+.chart-block-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.chart-block.collapsed .chart-content { display: none; }
+.chart-block.collapsed .chart-block-title-row .chart-toggle { transform: rotate(-90deg); }
+
+/* Sellers date range strip */
+.sellers-date-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface2, rgba(0,0,0,0.02));
+  border-bottom: 1px solid var(--border, rgba(0,0,0,0.06));
+}
+[data-theme="dark"] .sellers-date-range { background: rgba(255,255,255,0.03); }
+.sellers-date-input { flex: 1; padding: 6px 10px; font-size: 0.78rem; border-radius: 8px; }
+.sellers-date-sep { font-size: 0.72rem; color: var(--text3,#9ca3af); font-weight: 600; flex-shrink: 0; }
+
+/* Top sellers bar — product + qty only */
+.hbc-qty-badge {
+  display: inline-block;
+  font-size: 0.65rem; font-weight: 800;
+  padding: 2px 7px; border-radius: 5px;
+  background: rgba(200,0,15,0.08); color: var(--accent,#c8000f);
+  margin-top: 2px;
+}
+[data-theme="dark"] .hbc-qty-badge { background: rgba(200,0,15,0.18); }
+.hbc-pct {
+  font-size: 0.6rem; font-weight: 700;
+  color: rgba(255,255,255,0.85);
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RECEIPT PREVIEW BOX
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.receipt-preview-box {
+  background: var(--surface2, rgba(0,0,0,0.03));
+  border: 1px solid var(--border, rgba(0,0,0,0.08));
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 0.72rem; font-family: monospace;
+  color: var(--text2,#6b7280); line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 180px; overflow-y: auto;
+  margin-top: 6px;
+}
+[data-theme="dark"] .receipt-preview-box {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.08);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FOLLOW-UP TRACKER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.fu-section {
+  margin-bottom: 20px;
+}
+.fu-section-title {
+  font-size: 0.68rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text3,#9ca3af);
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--border,rgba(0,0,0,0.07));
+  margin-bottom: 8px;
+}
+.fu-rows { display: flex; flex-direction: column; gap: 2px; }
+
+.fu-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  background: var(--card-bg,#fff);
+  border: 1px solid var(--border,rgba(0,0,0,0.07));
+  border-radius: 12px;
+  transition: box-shadow 0.15s ease;
+}
+.fu-row:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+[data-theme="dark"] .fu-row { background: var(--surface2,rgba(255,255,255,0.04)); }
+
+.fu-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(200,0,15,0.08);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.fu-avatar svg { stroke: var(--accent,#c8000f); }
+[data-theme="dark"] .fu-avatar { background: rgba(200,0,15,0.18); }
+
+.fu-info { flex: 1; min-width: 0; }
+.fu-name { font-size: 0.82rem; font-weight: 700; color: var(--text1,#111); white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+[data-theme="dark"] .fu-name { color: var(--text1); }
+.fu-meta { font-size: 0.68rem; color: var(--text3,#9ca3af); margin-top: 2px; }
+.fu-amount { font-weight: 800; color: var(--accent,#c8000f); }
+
+.fu-actions { display: flex; gap: 5px; align-items: center; flex-shrink: 0; }
+
+/* Follow-up WhatsApp button */
+.btn-wa-fu {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 10px; border-radius: 8px;
+  background: linear-gradient(135deg, #25d366 0%, #128c4a 100%);
+  color: white !important; font-size: 0.68rem; font-weight: 800;
+  text-decoration: none; white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(37,211,102,0.3);
+  transition: all 0.2s ease;
+}
+.btn-wa-fu svg { stroke: white; }
+.btn-wa-fu:hover { box-shadow: 0 4px 12px rgba(37,211,102,0.45); transform: translateY(-1px); }
+.btn-wa-fu:active { transform: scale(0.96); }
+
+/* Custom message button */
+.btn-wa-custom {
+  display: inline-flex; align-items: center;
+  padding: 5px 10px; border-radius: 8px;
+  border: 1px solid rgba(37,211,102,0.4);
+  background: transparent; color: #16a34a;
+  font-size: 0.68rem; font-weight: 800;
+  cursor: pointer; white-space: nowrap;
+  transition: all 0.18s ease;
+}
+[data-theme="dark"] .btn-wa-custom { color: #4ade80; border-color: rgba(37,211,102,0.3); }
+.btn-wa-custom:hover { background: rgba(37,211,102,0.1); border-color: #25d366; }
+
+.fu-empty {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 48px 20px;
+  color: var(--text3,#9ca3af);
+  font-size: 0.82rem; font-weight: 600;
+  text-align: center; gap: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CUSTOMER TABS — BUYER TYPE FILTER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.cust-tab-strip {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  white-space: nowrap; padding-bottom: 2px;
+}
+.cust-tab-strip .tab { flex-shrink: 0; }
+
+/* Customer WhatsApp CTA in compact cards */
+.cust-compact-right .btn-wa-cta {
+  margin-top: 4px;
+  padding: 4px 8px;
+  font-size: 0.65rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DEBT CLOSURE — PAYMENT MODAL ENHANCEMENTS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.debt-options-strip {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: rgba(200,0,15,0.04);
+  border: 1px solid rgba(200,0,15,0.1);
+  border-radius: 12px;
+}
+[data-theme="dark"] .debt-options-strip {
+  background: rgba(200,0,15,0.08);
+  border-color: rgba(200,0,15,0.18);
+}
+
+.debt-opt-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text3, #9ca3af);
+  margin-bottom: 8px;
+}
+
+.debt-opt-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.debt-close-btn,
+.debt-writeoff-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+  border: none;
+  transition: all 0.18s ease;
+}
+
+.debt-close-btn {
+  background: rgba(22,163,74,0.12);
+  color: #15803d;
+  border: 1px solid rgba(22,163,74,0.25);
+}
+.debt-close-btn:hover {
+  background: #16a34a;
+  color: white;
+  border-color: #16a34a;
+}
+.debt-close-btn svg { stroke: currentColor; }
+
+.debt-writeoff-btn {
+  background: rgba(220,38,38,0.07);
+  color: #dc2626;
+  border: 1px solid rgba(220,38,38,0.18);
+}
+.debt-writeoff-btn:hover {
+  background: #dc2626;
+  color: white;
+  border-color: #dc2626;
+}
+.debt-writeoff-btn svg { stroke: currentColor; }
+
+[data-theme="dark"] .debt-close-btn   { background: rgba(22,163,74,0.18);  color: #4ade80;  border-color: rgba(22,163,74,0.3); }
+[data-theme="dark"] .debt-writeoff-btn{ background: rgba(220,38,38,0.15);  color: #f87171;  border-color: rgba(220,38,38,0.25); }

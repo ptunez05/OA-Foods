@@ -334,10 +334,10 @@ function submitPeopleUpdate(){
 }
 
 function openPaymentModal(clientId,sheet,name,owes){
-  document.getElementById('pay-client-id').value=clientId; document.getElementById('pay-sheet').value=sheet;
-  document.getElementById('pay-sub').textContent=name+' currently owes ₦'+fmt(owes);
-  document.getElementById('pay-amount').value='';
-  document.getElementById('modal-payment').classList.remove('hidden');
+  // Delegate to the enhanced version in admin.js which handles
+  // partial payment, Mark Fully Paid, and Write Off Debt
+  APP.currentPeopleTab = sheet || APP.currentPeopleTab;
+  openPartialPaymentModal(clientId, name, owes);
 }
 
 function submitPayment(){
@@ -354,21 +354,43 @@ function submitPayment(){
 
 // ── MY CUSTOMERS ──────────────────────────────────────────────────────────────
 
-function loadCustomers(){
+function loadCustomers(tab){
   renderRefreshBar('customers');
+  tab = tab || APP._custTab || 'all';
+  APP._custTab = tab;
   var el=document.getElementById('customers-body');
   el.innerHTML='<div class="loading-msg">Loading customers…</div>';
+
+  // Tab strip
+  var tabHtml = '<div class="tab-strip cust-tab-strip">'+
+    ['all','consumer','retail','wholesale','distributor'].map(function(t){
+      var labels={all:'Everyone',consumer:'Consumers',retail:'Retail Shops',wholesale:'Wholesalers',distributor:'Distributors'};
+      return '<button class="tab'+(tab===t?' active':'')+'" onclick="loadCustomers(\''+t+'\')">'+labels[t]+'</button>';
+    }).join('')+
+  '</div>';
+
   sbCall('getCustomers').then(function(res){
-    if(!res.success){el.innerHTML='<div class="loading-msg">Error.</div>';return;}
-    var customers=(res.data||[]).sort(function(a,b){return (parseFloat(b.total_spent)||0)-(parseFloat(a.total_spent)||0);});
-    if(!customers.length){el.innerHTML='<div class="empty-msg">No customers yet. Confirm orders to build your customer list.</div>';return;}
-    var html='<div class="customers-subtitle">Ranking by lifetime spend · state &amp; tier computed live</div><div class="card-list">';
+    if(!res.success){el.innerHTML=tabHtml+'<div class="loading-msg">Error.</div>';return;}
+    var all=(res.data||[]);
+    // Filter by buyer_type if not 'all'
+    var customers = tab==='all' ? all : all.filter(function(c){ return (c.buyer_type||'consumer')===tab; });
+    customers.sort(function(a,b){return (parseFloat(b.total_spent)||0)-(parseFloat(a.total_spent)||0);});
+
+    if(!customers.length){
+      el.innerHTML=tabHtml+'<div class="empty-msg">No '+tab+' customers yet.</div>';
+      return;
+    }
+    var html=tabHtml+'<div class="customers-subtitle">Ranked by lifetime spend · live state &amp; tier</div><div class="card-list">';
     customers.forEach(function(c,i){
       var rank=i+1, isTop=rank<=3;
       var cleanPhone=String(c.phone||'').replace(/\D/g,'');
       if(cleanPhone.startsWith('0')) cleanPhone='234'+cleanPhone.slice(1);
       var cs = getCustomerState(c);
       var badges = stateTag(cs.state) + tierTag(cs.tier);
+      // WhatsApp CTA
+      var waMsg = 'Hello '+esc(c.name||c.buyer_name||'')+'! 👋 Thank you for being a valued OA Drinks & Snacks customer. We have fresh stock ready for you. Would you like to place an order?';
+      var waBtn = cleanPhone ? '<a class="btn-wa-cta" href="https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(waMsg)+'" target="_blank">'+
+        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>Message</a>' : '';
       if(isTop){
         var rankColors=['var(--accent)','#6b7280','#d97706'];
         html+='<div class="cust-card-top">';
@@ -376,12 +398,12 @@ function loadCustomers(){
         html+='<div class="cust-top-info"><div class="cust-name">'+esc(c.name||c.buyer_name||'')+'</div>';
         html+='<div class="cust-badges">'+badges+'</div>';
         html+='<div class="cust-meta">'+esc(c.state||'')+(c.lga?', '+esc(c.lga):'')+'</div></div>';
-        html+=(cleanPhone?'<a class="btn-wa" style="padding:6px 14px;font-size:12px;text-decoration:none;font-weight:700" href="https://wa.me/'+cleanPhone+'" target="_blank">💬 WhatsApp</a>':'');
+        html+=waBtn;
         html+='</div>';
         html+='<div class="cust-top-stats"><div class="cust-stat"><div class="cust-stat-label">TOTAL SPENT</div><div class="cust-stat-val accent">₦'+fmt(c.total_spent)+'</div></div>';
         html+='<div class="cust-stat"><div class="cust-stat-label">ORDERS</div><div class="cust-stat-val">'+esc(String(c.total_orders||0))+'</div></div>';
         html+='<div class="cust-stat"><div class="cust-stat-label">LAST ORDER</div><div class="cust-stat-val">'+cs.days+' days ago</div></div></div>';
-        if(c.phone) html+='<div class="cust-phone">📞 '+esc(c.phone||'')+'</div>';
+        if(c.phone) html+='<div class="cust-phone"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.11 12 19.79 19.79 0 0 1 1.09 3.4 2 2 0 0 1 3.05 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg> '+esc(c.phone||'')+'</div>';
         html+='</div>';
       } else {
         html+='<div class="cust-card-compact">';
@@ -389,13 +411,13 @@ function loadCustomers(){
         html+='<div class="cust-compact-info"><div class="cust-name">'+esc(c.name||c.buyer_name||'')+'</div>';
         html+='<div class="cust-badges-sm">'+badges+'</div>';
         html+='<div class="cust-meta">'+esc(c.state||'')+'</div></div>';
-        html+='<div class="cust-compact-right"><div class="cust-spent-compact">'+fmtK(c.total_spent)+'</div><div class="cust-orders-compact">'+esc(String(c.total_orders||0))+' orders</div></div>';
+        html+='<div class="cust-compact-right"><div class="cust-spent-compact">'+fmtK(c.total_spent)+'</div><div class="cust-orders-compact">'+esc(String(c.total_orders||0))+' orders</div>'+waBtn+'</div>';
         html+='</div>';
       }
     });
     html+='</div>';
     el.innerHTML=html;
-  }).catch(function(){el.innerHTML='<div class="loading-msg">Connection issue.</div>';});
+  }).catch(function(){el.innerHTML=tabHtml+'<div class="loading-msg">Connection issue.</div>';});
 }
 
 function fmtK(v){ var n=parseFloat(v)||0; if(n>=1000000) return '₦'+(n/1000000).toFixed(1)+'M'; if(n>=1000) return '₦'+(n/1000).toFixed(0)+'k'; return '₦'+(n).toLocaleString('en-NG'); }
