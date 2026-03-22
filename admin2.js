@@ -1,5 +1,5 @@
 // OA Shop Book — admin2.js  v4.0 Supabase
-// Items in Shop, My Stock, People Asking, Customers, Money Records, Settings
+// My Products, My Stock, My Customers (CRM), Top Customers, My Cash Book, Settings
 
 // ── ITEMS IN SHOP ─────────────────────────────────────────────────────────────
 
@@ -285,7 +285,7 @@ function loadPeople(tab){
       if(c.state||c.lga) html+='<div class="pcard-detail">📍 '+esc((c.lga||'')+((c.lga&&c.state)?', ':'')+( c.state||''))+'</div>';
       if(c.interest||c.packs_requested) html+='<div class="pcard-detail">🧺 '+esc(c.interest||c.packs_requested||'')+'</div>';
       if(c.remind_me_on){
-        html+='<div class="pcard-followup"><span>🔔 Follow up: '+esc(String(c.remind_me_on))+'</span><button class="pcard-edit-date" onclick="openPeopleModal(\''+esc(c.id)+'\',\''+APP.currentPeopleTab+'\',\''+stage+'\')">EDIT DATE</button></div>';
+        html+='<div class="pcard-followup"><span>🔔 Reminder: '+esc(String(c.remind_me_on))+'</span><button class="pcard-edit-date" onclick="openPeopleModal(\''+esc(c.id)+'\',\''+APP.currentPeopleTab+'\',\''+stage+'\')">EDIT DATE</button></div>';
       }
       if(owes>0) html+='<div class="pcard-owes">💳 Owes you: ₦'+fmt(owes)+'</div>';
       html+='<div class="pcard-actions">';
@@ -483,7 +483,7 @@ function loadMoney(){
           '<div class="mts-source">from manual records</div></div>'+
         '<div class="mts-item"><div class="mts-label">THIS MONTH (LIVE)</div>'+
           '<div class="mts-val">₦'+fmtK(liveRev)+'</div>'+
-          '<div class="mts-source">'+liveCount+' confirmed order'+(liveCount!==1?'s':'')+
+          '<div class="mts-source">'+liveCount+' accepted order'+(liveCount!==1?'s':'')+
             (chgPct!==0?' · <span class="mts-change '+(chgPct>0?'pos':'neg')+'">'+chgSign+chgPct+'% vs last month</span>':'')+
           '</div></div>'+
         '<div class="mts-item"><div class="mts-label">LOST TO WASTE</div>'+
@@ -513,7 +513,7 @@ function loadMoney(){
           '</div>'+
           '<div class="mlb-sub">Add a manual money record to capture your production cost, spoilage, and profit margin per item.</div>'+
         '</div>'+
-        (liveOrders.length?renderLiveOrdersList(liveOrders):'<div class="empty-msg">No confirmed orders this month yet.</div>');
+        (liveOrders.length?renderLiveOrdersList(liveOrders):'<div class="empty-msg">No accepted orders this month yet.</div>');
       return;
     }
 
@@ -523,7 +523,7 @@ function loadMoney(){
       (liveOrders.length?
         '<div class="money-section-head">'+
           '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'+
-          ' Live — This Month\'s Confirmed Orders'+
+          ' Live — This Month\'s Accepted Orders'+
         '</div>'+
         renderLiveOrdersList(liveOrders.slice(0,5)):'') +
       // Manual records
@@ -740,10 +740,10 @@ function confirmFactoryReset(){
   if(!confirm(
     '⚠️ FACTORY RESET — READ CAREFULLY\n\n'+
     'This will permanently clear ALL your shop data:\n'+
-    '  • All orders (pending, confirmed, fell through)\n'+
+    '  • All orders (pending, accepted, cancelled)\n'+
     '  • All customers and CRM contacts\n'+
     '  • All stock records and batch logs\n'+
-    '  • All money records and audit logs\n\n'+
+    '  • All cash book records and audit logs\n\n'+
     'Your product list and settings will be kept.\n\n'+
     'A backup will be downloaded first automatically.\n\n'+
     'Are you sure you want to continue?'

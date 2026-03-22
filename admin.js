@@ -1,5 +1,5 @@
-// OA Shop Book — admin.js  v4.0 Supabase
-// Auth, navigation, API, Shop Today, Sales & Orders, Offline Queue
+// OA Shop Book — admin.js  v4.1 Supabase — P0 terminology + pulse fixes
+// Auth, navigation, API, Shop Today, Orders, Offline Queue
 
 // ── SUPABASE CONFIG ───────────────────────────────────────────────────────────
 
@@ -39,6 +39,8 @@ var APP = {
   // Chart state
   _chartWindow:  6,
   _sellersMode: 'today',
+  // Customer tab state — persists across navigation
+  _custTab: '',
 };
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
@@ -388,10 +390,10 @@ function goto(name, el) {
   var page = document.getElementById('page-'+name);
   if (page) { page.classList.remove('hidden'); page.classList.add('active'); }
   if (el) el.classList.add('active');
-  var titles = {today:'Shop Today',orders:'Sales & Orders',items:'Items in Shop',
-    stock:'My Stock',people:'People Asking',customers:'My Customers',
-    money:'Money Records',settings:'Shop Settings',history:'Shop History',
-    followups:'Follow-Ups'};
+  var titles = {today:'Shop Today',orders:'Orders',items:'My Products',
+    stock:'My Stock',people:'My Customers',customers:'My Customers',
+    money:'My Cash Book',settings:'Shop Settings',history:'Past Records',
+    followups:'Reminders'};
   var tb = document.getElementById('tb-title');
   if (tb) tb.textContent = titles[name] || name;
   var sidebar = document.getElementById('sidebar');
@@ -804,12 +806,18 @@ function getShopPulse() {
     var possibleProfit = ifAllSold - stockWorth;
 
     // ── People / CRM ──────────────────────────────────────────────────────────
-    var retailC=0, wholesaleC=0, distributorC=0, overdueFollowups=0;
+    var retailC=0, wholesaleC=0, distributorC=0, overdueFollowups=0, todayFollowUps=0;
+    var todayDate = new Date(); todayDate.setHours(0,0,0,0);
+    var tomorrowDate = new Date(todayDate); tomorrowDate.setDate(tomorrowDate.getDate()+1);
     clients.forEach(function(c){
       if (c.client_type==='retail')      retailC++;
       if (c.client_type==='wholesale')   wholesaleC++;
       if (c.client_type==='distributor') distributorC++;
-      if (c.remind_me_on && new Date(c.remind_me_on) < new Date() && c.where_we_are !== 'not_interested') overdueFollowups++;
+      if (c.remind_me_on && c.where_we_are !== 'not_interested') {
+        var rd = new Date(c.remind_me_on); rd.setHours(0,0,0,0);
+        if (rd < todayDate)       overdueFollowups++;
+        else if (rd < tomorrowDate) todayFollowUps++;
+      }
     });
     var peopleStillOwe = debtors.reduce(function(s,r){ return s+(parseFloat(r.balance_owed)||0); },0);
 
@@ -860,10 +868,11 @@ function getShopPulse() {
     }).sort(function(a,b){ return b.qty-a.qty; }).slice(0,8);
 
     // ── Pulse colours ─────────────────────────────────────────────────────────
+    // No grey states — every circle must drive an action
     var targetPct   = monthlyTarget>0 ? Math.min(100,Math.round((moneyThisMonth/monthlyTarget)*100)) : 0;
-    var moneyPulse  = todaySalesAmt>0 ? 'green' : moneyThisMonth>0 ? 'yellow' : 'grey';
-    var stockPulse  = lowItems.length===0?'green':lowItems.length<3?'yellow':'red';
-    var peoplePulse = (retailC+wholesaleC+distributorC)===0?'grey':overdueFollowups>0?'red':'green';
+    var moneyPulse  = todaySalesAmt>0 ? 'green' : moneyThisMonth>0 ? 'yellow' : 'yellow'; // yellow = no sales today / yellow = nothing yet this month
+    var stockPulse  = lowItems.length===0 ? 'green' : lowItems.length<3 ? 'yellow' : 'red';
+    var peoplePulse = overdueFollowups>0 ? 'red' : todayFollowUps>0 ? 'yellow' : (retailC+wholesaleC+distributorC)===0 ? 'yellow' : 'green';
 
     // ── Recovery signals ──────────────────────────────────────────────────────
     var recoveryGoneQuiet=[], recoveryAtRisk=[];
@@ -885,7 +894,7 @@ function getShopPulse() {
       target_reached_pct:    targetPct,
       people_still_owe_you:  peopleStillOwe,
       money_pulse:           moneyPulse,
-      money_message:         todaySalesAmt>0?'Money came in today — '+confirmedTodayCount+' sale'+(confirmedTodayCount>1?'s':'')+' confirmed.':moneyThisMonth>0?'No sales confirmed yet today.':'No confirmed sales this month yet.',
+      money_message:         todaySalesAmt>0 ? 'Money came in today — '+confirmedTodayCount+' order'+(confirmedTodayCount!==1?'s':'')+' accepted.' : moneyThisMonth>0 ? 'No orders accepted yet today. Check if walk-in sales happened.' : 'No accepted orders this month yet. Add your first entry.',
       // Today's sales (for metric card)
       today_sales_amount:    todaySalesAmt,
       today_sales_qty:       todaySalesQty,
@@ -909,8 +918,9 @@ function getShopPulse() {
       wholesale_clients:     wholesaleC,
       distributor_clients:   distributorC,
       follow_ups_overdue:    overdueFollowups,
+      follow_ups_today:      todayFollowUps,
       people_pulse:          peoplePulse,
-      people_message:        overdueFollowups>0?overdueFollowups+' follow-up(s) overdue.':'All follow-ups up to date.',
+      people_message:        overdueFollowups>0 ? overdueFollowups+' reminder'+(overdueFollowups!==1?'s':'')+' overdue — follow up now.' : todayFollowUps>0 ? todayFollowUps+' reminder'+(todayFollowUps!==1?'s':'')+' due today.' : (retailC+wholesaleC+distributorC)===0 ? 'No contacts added yet. Add your first customer.' : 'All reminders up to date.',
       // Charts
       monthly_chart:         monthlyChart,
       top_sellers_today:     topSellersToday,
@@ -1525,8 +1535,8 @@ function renderHistoryReport(d) {
   // Header summary cards
   html += '<div class="hist-summary-strip">';
   html += '<div class="hist-sum-card"><div class="hist-sum-val">₦'+fmtK(d.totalRev)+'</div><div class="hist-sum-label">Total Sales</div></div>';
-  html += '<div class="hist-sum-card"><div class="hist-sum-val">'+d.totalOrders+'</div><div class="hist-sum-label">Orders Confirmed</div></div>';
-  html += '<div class="hist-sum-card"><div class="hist-sum-val">'+d.totalFailed+'</div><div class="hist-sum-label">Fell Through</div></div>';
+  html += '<div class="hist-sum-card"><div class="hist-sum-val">'+d.totalOrders+'</div><div class="hist-sum-label">Orders Accepted</div></div>';
+  html += '<div class="hist-sum-card"><div class="hist-sum-val">'+d.totalFailed+'</div><div class="hist-sum-label">Cancelled</div></div>';
   html += '<div class="hist-sum-card"><div class="hist-sum-val">'+d.totalNewLeads+'</div><div class="hist-sum-label">New Leads</div></div>';
   html += '</div>';
 
@@ -1542,7 +1552,7 @@ function renderHistoryReport(d) {
 
   // Confirmed orders list
   if (d.confirmed.length) {
-    html += '<div class="hist-section-title">Confirmed Orders</div>';
+    html += '<div class="hist-section-title">Accepted Orders</div>';
     html += '<div class="hist-orders-list">';
     d.confirmed.slice(0,20).forEach(function(o){
       var dt = o.created_at ? new Date(o.created_at).toLocaleDateString('en-NG') : '';
@@ -1581,8 +1591,8 @@ function copyHistoryReport(format) {
     text += '📅 *Period:* '+label+'\n';
     text += '━━━━━━━━━━━━━━━━━━━━━━━━\n';
     text += '💰 *Total Sales:* ₦'+fmtK(d.totalRev)+'\n';
-    text += '✅ *Orders Confirmed:* '+d.totalOrders+'\n';
-    text += '❌ *Orders Fell Through:* '+d.totalFailed+'\n';
+    text += '✅ *Orders Accepted:* '+d.totalOrders+'\n';
+    text += '❌ *Orders Cancelled:* '+d.totalFailed+'\n';
     text += '🤝 *New Leads:* '+d.totalNewLeads+'\n';
     if (d.products.length) {
       text += '📦 *Items Sold:*\n';
@@ -1611,8 +1621,8 @@ function copyHistoryReport(format) {
     text  = 'OA SHOP HISTORY — '+label+'\n';
     text += '='.repeat(40)+'\n';
     text += 'Total Sales:         ₦'+fmtK(d.totalRev)+'\n';
-    text += 'Orders Confirmed:    '+d.totalOrders+'\n';
-    text += 'Orders Fell Through: '+d.totalFailed+'\n';
+    text += 'Orders Accepted:     '+d.totalOrders+'\n';
+    text += 'Orders Cancelled:    '+d.totalFailed+'\n';
     text += 'New Leads:           '+d.totalNewLeads+'\n';
     if (d.products.length) {
       text += 'ITEMS SOLD:\n';
@@ -1703,14 +1713,14 @@ function renderPulseRings(d){
     if (!ring) return;
     var svg = ring.querySelector('svg');
     if (!svg) return;
-    var colMap = {green:'#16a34a', yellow:'#d97706', red:'#c8000f', grey:'#9ca3af'};
+    var colMap = {green:'#16a34a', yellow:'#d97706', red:'#c8000f', grey:'#d97706'}; // grey maps to yellow — no dead states
     var col = id==='ring-money' ? colMap[moneyC] : id==='ring-stock' ? colMap[stockC] : colMap[peopleC];
     svg.style.stroke = col;
   });
 
-  var ml={green:'MONEY FLOWING',yellow:'STEADY',red:'CHECK NOW',grey:'NO DATA YET'};
-  var sl={green:'ALL STOCKED',yellow:'SOME LOW',red:'RUNNING DRY',grey:'NO STOCK DATA'};
-  var pl={green:'UP TO DATE',yellow:'FOLLOW UP',red:'OVERDUE',grey:'NO LEADS YET'};
+  var ml={green:'MONEY FLOWING',yellow:'CHECK SALES',red:'CHECK NOW',grey:'CHECK SALES'};
+  var sl={green:'ALL STOCKED',yellow:'SOME LOW',red:'RUNNING DRY',grey:'CHECK STOCK'};
+  var pl={green:'UP TO DATE',yellow:'FOLLOW UP',red:'OVERDUE',grey:'ADD CONTACTS'};
   setStatusText('pulse-money-label',ml[moneyC]||ml.grey,moneyC);
   setStatusText('pulse-stock-label',sl[stockC]||sl.grey,stockC);
   setStatusText('pulse-people-label',pl[peopleC]||pl.grey,peopleC);
@@ -1749,10 +1759,11 @@ function expandPulse(type){
   }
   if(type==='people-p'){
     drawer.innerHTML='<div class="drawer-msg">'+esc(d.people_message)+'</div>'+
-      drow('Small shops talking to you',d.retail_clients||0)+
+      drow('Small shops',d.retail_clients||0)+
       drow('Wholesalers',d.wholesale_clients||0)+
       drow('Distributors',d.distributor_clients||0)+
-      drow('Follow-ups overdue',d.follow_ups_overdue||0);
+      drow('Reminders overdue',d.follow_ups_overdue||0)+
+      drow('Reminders due today',d.follow_ups_today||0);
   }
 }
 function drow(label,val){ return '<div class="drawer-row"><span>'+label+'</span><strong>'+val+'</strong></div>'; }
@@ -1793,7 +1804,7 @@ function renderMetricCards(d){
       String(waiting),
       'WAITING FOR YOU',
       waiting===0 ? 'No pending orders' : 'Tap to confirm or reject',
-      failed>0 ? failed+' fell through this month' : null,
+      failed>0 ? failed+' cancelled this month' : null,
       // icon: inbox/tray
       '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>'
     )+
@@ -1808,7 +1819,7 @@ function renderMetricCards(d){
     mCard('mc-owed',
       owedAmt>0 ? '₦'+fmtK(owedAmt) : '₦0',
       'PEOPLE OWE YOU',
-      owedAmt===0 ? 'No outstanding balances' : overdue+' follow-up'+(overdue!==1?'s':'')+' overdue',
+      owedAmt===0 ? 'No outstanding balances' : overdue+' reminder'+(overdue!==1?'s':'')+' overdue',
       owedAmt>0 ? 'Collect before month end' : null,
       // icon: hand with coin / payment
       '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
@@ -2051,9 +2062,9 @@ function copyReport(){
   }
   lines=lines.concat(['','🛒 ORDERS','────────────────────────────────────────',
     '  Waiting:           '+padLeft(String(d.orders_waiting||0),15),
-    '  Confirmed Today:   '+padLeft(String(d.confirmed_orders||0),15),
+    '  Accepted Today:    '+padLeft(String(d.confirmed_orders||0),15),
     '  Customers Total:   '+padLeft(String(d.total_customers||0),15),
-    '  Overdue Follow-up: '+padLeft(String(d.follow_ups_overdue||0),15),'',
+    '  Overdue Reminders: '+padLeft(String(d.follow_ups_overdue||0),15),'',
     '════════════════════════════════════════','  Sent from OA Shop Book','════════════════════════════════════════']);
   navigator.clipboard.writeText(lines.join('\n'))
     .then(function(){toast('Report copied! Paste into WhatsApp','good');})
@@ -2096,12 +2107,12 @@ function switchOrderTab(tab,btn){
 }
 
 function renderOrderCards(orders,tab){
-  if(!orders.length) return '<div class="card-list"><div class="empty-msg">No '+(tab==='pending'?'orders waiting':tab==='confirmed'?'confirmed orders':'fell through orders')+' right now.</div></div>';
+  if(!orders.length) return '<div class="card-list"><div class="empty-msg">No '+(tab==='pending'?'orders waiting':tab==='confirmed'?'accepted orders':'cancelled orders')+' right now.</div></div>';
   var html='<div class="card-list">';
   orders.forEach(function(o){
     var name=o.buyer_name||o.name||'';
     var items=[]; try{var parsed=JSON.parse(o.items_json||'[]');if(Array.isArray(parsed))items=parsed;}catch(e){}
-    var dBadge=tab==='confirmed'?badge(delivLabel(o.delivery_status),o.delivery_status||'getting_ready'):tab==='pending'?badge('WAITING','waiting'):badge('FELL THROUGH','fell_through');
+    var dBadge=tab==='confirmed'?badge(delivLabel(o.delivery_status),o.delivery_status||'getting_ready'):tab==='pending'?badge('WAITING','waiting'):badge('CANCELLED','fell_through');
     html+='<div class="order-card">';
     html+='<div class="order-card-head"><div><div class="order-ref">ORDER #'+esc(o.tracking_ref||o.id||'')+'</div><div class="order-name">'+esc(name)+'</div><div class="order-phone">📞 '+esc(o.phone||'')+'</div></div>'+dBadge+'</div>';
     if(o.landmark||o.state) html+='<div class="order-location">📍 '+(o.landmark?esc(o.landmark)+', ':'')+esc(o.state||'')+(o.lga?', '+esc(o.lga):'')+'</div>';
@@ -2114,10 +2125,13 @@ function renderOrderCards(orders,tab){
     }
     html+='<div class="order-card-actions">';
     if(tab==='pending'){
-      html+='<button class="btn-confirm" onclick="confirmOrder(\''+esc(o.id)+'\')">✓ CONFIRM</button>';
-      html+='<button class="btn-fail" onclick="openFailModal(\''+esc(o.id)+'\')">✗ FELL THROUGH</button>';
+      html+='<button class="btn-confirm" onclick="confirmOrder(\''+esc(o.id)+'\')">'+
+        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> ACCEPT</button>';
+      html+='<button class="btn-fail" onclick="openFailModal(\''+esc(o.id)+'\')">'+
+        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> CANCEL</button>';
     }
-    if(tab==='confirmed') html+='<button class="btn-edit" onclick="openDeliveryModal(\''+esc(o.id)+'\')">🚗 Send to Driver</button>';
+    if(tab==='confirmed') html+='<button class="btn-edit" onclick="openDeliveryModal(\''+esc(o.id)+'\')">'+
+      '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg> Send to Driver</button>';
     if(tab==='failed') html+='<span style="font-size:12px;color:var(--text3)">'+esc(o.reason||'')+'</span>';
     html+='</div></div>';
   });
@@ -2142,7 +2156,7 @@ function renderOrderTable(orders,tab){
     html+='<td>'+esc(o.state||'')+(o.lga?', '+esc(o.lga):'')+'</td>';
     html+='<td style="font-size:11px;color:var(--text3);max-width:140px">'+esc(String(o.items_json||''))+'</td>';
     html+='<td><strong>₦'+fmt(o.total)+'</strong></td>';
-    if(tab==='pending') html+='<td><div style="display:flex;gap:5px"><button class="btn-confirm" onclick="confirmOrder(\''+esc(o.id)+'\')">Confirm</button><button class="btn-fail" onclick="openFailModal(\''+esc(o.id)+'\')">Fell Through</button></div></td>';
+    if(tab==='pending') html+='<td><div style="display:flex;gap:5px"><button class="btn-confirm" onclick="confirmOrder(\''+esc(o.id)+'\')">Accept</button><button class="btn-fail" onclick="openFailModal(\''+esc(o.id)+'\')">Cancel</button></div></td>';
     if(tab==='confirmed') html+='<td>'+badge(delivLabel(o.delivery_status),o.delivery_status||'getting_ready')+'</td><td><button class="btn-edit" onclick="openDeliveryModal(\''+esc(o.id)+'\')">Send to Driver</button></td>';
     if(tab==='failed') html+='<td style="font-size:12px;color:var(--text3)">'+esc(o.reason||'')+'</td>';
     html+='</tr>';
@@ -2152,7 +2166,7 @@ function renderOrderTable(orders,tab){
 
 function confirmOrder(id){
   sbCall('decideOrder',{order_id:id,decision:'confirm',done_by:APP.name}).then(function(res){
-    if(res.success){toast('Sale confirmed! Stock updated.','good');loadOrders('pending');loadToday();}
+    if(res.success){toast('Order accepted! Stock updated.','good');loadOrders('pending');loadToday();}
     else toast('Error: '+(res.error||'unknown'),'bad');
   }).catch(function(){toast('Connection issue','bad');});
 }
@@ -2175,7 +2189,7 @@ function submitFail(){
   var reason=sel==='Other'?other:sel;
   if(!reason){toast('Please pick a reason','bad');return;}
   sbCall('decideOrder',{order_id:id,decision:'fail',reason:reason,done_by:APP.name}).then(function(res){
-    if(res.success){closeModal('modal-fail');toast('Order marked as fell through','good');loadOrders('pending');loadToday();}
+    if(res.success){closeModal('modal-fail');toast('Order marked as cancelled','good');loadOrders('pending');loadToday();}
     else toast('Error: '+(res.error||''),'bad');
   });
 }
@@ -2254,7 +2268,7 @@ function loadFollowUps() {
   renderRefreshBar('followups');
   var el = document.getElementById('followups-body');
   if (!el) return;
-  el.innerHTML = '<div class="loading-msg">Loading follow-ups…</div>';
+  el.innerHTML = '<div class="loading-msg">Loading reminders…</div>';
 
   var now        = new Date();
   var thirtyDays = new Date(now); thirtyDays.setDate(thirtyDays.getDate()-30);
@@ -2299,13 +2313,13 @@ function loadFollowUps() {
 
     if (failed.length) {
       sections.push(renderFuSection(
-        'Fell Through — Try Again',
+        'Cancelled — Try Again',
         'fell-through',
         failed.map(function(o){
           var msg = buildWaTemplateMsg('fell_through',{name:o.buyer_name||'Customer',ref:o.tracking_ref||''});
           var link = waLink(o.phone,msg);
           return fuRow(o.buyer_name||'',o.phone||'',
-            'Fell through '+(o.reason?'· '+o.reason:''),
+            'Cancelled '+(o.reason?'· '+o.reason:''),
             '₦'+fmtK(o.total),
             link, 'Win Back', 'fell_through',
             o.buyer_name||'', o.tracking_ref||'', o.phone||'', ''
@@ -2316,7 +2330,7 @@ function loadFollowUps() {
 
     if (overdue.length) {
       sections.push(renderFuSection(
-        'Overdue Follow-Ups — People Asking',
+        'Overdue Reminders — My Customers',
         'overdue-leads',
         overdue.map(function(c){
           var name = c.contact_name||c.shop_name||'Customer';
@@ -2334,7 +2348,7 @@ function loadFollowUps() {
 
     if (debtors.length) {
       sections.push(renderFuSection(
-        'Outstanding Balances — Collect Now',
+        'People Owe You — Collect Now',
         'debtors',
         debtors.map(function(c){
           var name = c.contact_name||c.shop_name||'Customer';
@@ -2367,7 +2381,7 @@ function loadFollowUps() {
     }
 
     if (!sections.length) {
-      el.innerHTML = '<div class="fu-empty"><svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.25;margin-bottom:10px"><polyline points="20 6 9 17 4 12"/></svg><div>All follow-ups are up to date. Great work!</div></div>';
+      el.innerHTML = '<div class="fu-empty"><svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.25;margin-bottom:10px"><polyline points="20 6 9 17 4 12"/></svg><div>All reminders are up to date. Well done!</div></div>';
       return;
     }
 
