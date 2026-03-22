@@ -1793,47 +1793,48 @@ function renderMetricCards(d){
 
   grid.innerHTML =
     mCard('mc-cash',
-      '₦'+fmtK(todayAmt),
+      fmtK(todayAmt),
       'CASH IN TODAY',
-      todayCnt>0 ? todayCnt+' order'+(todayCnt!==1?'s':'')+' confirmed' : 'No confirmed sales yet',
-      todayAmt===0 ? 'Tap Orders to confirm pending ones' : null,
-      // icon: wallet/cash
-      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>'
+      todayCnt>0 ? todayCnt+' order'+(todayCnt!==1?'s':'')+' accepted' : 'No accepted orders yet',
+      todayAmt===0 ? 'Tap to accept pending orders' : null,
+      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>',
+      '', 'orders'
     )+
     mCard('mc-pending',
       String(waiting),
       'WAITING FOR YOU',
-      waiting===0 ? 'No pending orders' : 'Tap to confirm or reject',
+      waiting===0 ? 'No pending orders' : waiting+' order'+(waiting!==1?'s':'')+' need a decision',
       failed>0 ? failed+' cancelled this month' : null,
-      // icon: inbox/tray
-      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>'
+      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
+      '', 'orders'
     )+
     mCard('mc-stock',
-      String(lowCount),
+      lowCount===0 ? '✓' : String(lowCount),
       lowCount===0 ? 'STOCK ALL GOOD' : 'RESTOCK NEEDED',
-      lowCount===0 ? 'All '+(d.total_products||0)+' items above alert' : lowNames||'Check items below',
-      lowCount>0 ? 'Tap Stock to restock now' : null,
-      // icon: package/box
-      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>'
+      lowCount===0 ? 'All '+(d.total_products||0)+' items stocked up' : lowNames||'Check items below',
+      lowCount>0 ? 'Tap to restock now' : null,
+      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
+      '', 'stock'
     )+
     mCard('mc-owed',
-      owedAmt>0 ? '₦'+fmtK(owedAmt) : '₦0',
+      owedAmt>0 ? fmtK(owedAmt) : '₦0',
       'PEOPLE OWE YOU',
       owedAmt===0 ? 'No outstanding balances' : overdue+' reminder'+(overdue!==1?'s':'')+' overdue',
       owedAmt>0 ? 'Collect before month end' : null,
-      // icon: hand with coin / payment
       '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
-      owedAmt>0 ? 'mc-owed-alert' : ''
+      owedAmt>0 ? 'mc-owed-alert' : '', 'followups'
     );
 }
-function mCard(cls, val, label, sub1, sub2, icon, extraCls){
-  return '<div class="metric-card '+cls+(extraCls?' '+extraCls:'')+'" onclick="toggleMcDetail(this)">'+
+function mCard(cls, val, label, sub1, sub2, icon, extraCls, navTarget){
+  var nav = navTarget ? 'onclick="goto(\''+navTarget+'\')"' : 'onclick="toggleMcDetail(this)"';
+  return '<div class="metric-card '+cls+(extraCls?' '+extraCls:'')+'" '+nav+'>'+
     '<div class="mc-head">'+
       '<div class="mc-icon-wrap">'+(icon||'')+'</div>'+
       '<div class="mc-val">'+val+'</div>'+
+      (navTarget ? '<div class="mc-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>' : '')+
     '</div>'+
     '<div class="mc-label">'+label+'</div>'+
-    '<div class="mc-detail">'+
+    '<div class="mc-detail open">'+
       (sub1?'<div class="mc-sub1">'+sub1+'</div>':'')+
       (sub2?'<div class="mc-sub2">'+sub2+'</div>':'')+
     '</div></div>';
@@ -1852,14 +1853,31 @@ function renderTargetBar(d){
 
 function renderMonthlyChart(d){
   var chart=d.monthly_chart||[], el=document.getElementById('bar-chart-months'); if(!el) return;
-  var windowMonths=parseInt(APP._chartWindow||6);
-  var filtered=chart.slice(-windowMonths);
-  if(!filtered.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px 0">No confirmed sales yet</div>';return;}
-  var max=Math.max.apply(null,filtered.map(function(m){return m.revenue;}))||1;
-  el.innerHTML=filtered.map(function(m){
-    var h=Math.max(4,Math.round((m.revenue/max)*90));
-    var mo=m.month?m.month.slice(5):''; var yr=m.month?m.month.slice(2,4):'';
-    return '<div class="bc-wrap"><div class="bc-bar" style="height:'+h+'px"><div class="bc-tip">₦'+fmtK(m.revenue)+'</div></div><div class="bc-label">'+mo+'/'+yr+'</div></div>';
+  // Show last 6 months as summary cards with actual ₦ amounts
+  var months=chart.slice(-6);
+  if(!months.length){
+    el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px 0;text-align:center">No accepted orders yet — sales will appear here once you start accepting orders</div>';
+    return;
+  }
+  var monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var max=Math.max.apply(null,months.map(function(m){return m.revenue;}))||1;
+  el.innerHTML=months.map(function(m,i){
+    var prev=months[i-1];
+    var pct=prev&&prev.revenue>0?Math.round(((m.revenue-prev.revenue)/prev.revenue)*100):null;
+    var bar=Math.max(8,Math.round((m.revenue/max)*100));
+    var isCurrentMonth=(m.month===new Date().toISOString().slice(0,7));
+    var mo=m.month?parseInt(m.month.slice(5))-1:0;
+    var yr=m.month?m.month.slice(2,4):'';
+    var trend=pct===null?'':pct>0?
+      '<span class="mc-rev-up">▲'+pct+'%</span>':pct<0?
+      '<span class="mc-rev-down">▼'+Math.abs(pct)+'%</span>':
+      '<span class="mc-rev-flat">—</span>';
+    return '<div class="mc-rev-card'+(isCurrentMonth?' mc-rev-current':'')+'">'+ 
+      '<div class="mc-rev-month">'+monthNames[mo]+' \''+yr+'</div>'+
+      '<div class="mc-rev-amt">'+fmtK(m.revenue)+'</div>'+
+      '<div class="mc-rev-bar-wrap"><div class="mc-rev-bar" style="width:'+bar+'%"></div></div>'+
+      '<div class="mc-rev-trend">'+trend+'</div>'+
+    '</div>';
   }).join('');
 }
 
@@ -2303,7 +2321,7 @@ function loadFollowUps() {
           var link = waLink(o.phone,msg);
           return fuRow(o.buyer_name||'',o.phone||'',
             'Placed '+fmtDateTime(o.created_at),
-            '₦'+fmtK(o.total),
+            fmtK(o.total),
             link, 'Follow Up', 'followup_order',
             o.buyer_name||'', o.tracking_ref||'', o.phone||'', ''
           );
@@ -2320,7 +2338,7 @@ function loadFollowUps() {
           var link = waLink(o.phone,msg);
           return fuRow(o.buyer_name||'',o.phone||'',
             'Cancelled '+(o.reason?'· '+o.reason:''),
-            '₦'+fmtK(o.total),
+            fmtK(o.total),
             link, 'Win Back', 'fell_through',
             o.buyer_name||'', o.tracking_ref||'', o.phone||'', ''
           );
@@ -2355,8 +2373,8 @@ function loadFollowUps() {
           var msg  = buildWaTemplateMsg('followup_payment',{name:name,amount:fmtK(c.balance_owed)});
           var link = waLink(c.phone,msg);
           return fuRow(name,c.phone||'',
-            'Owes ₦'+fmtK(c.balance_owed),
-            '₦'+fmtK(c.balance_owed),
+            'Owes '+fmtK(c.balance_owed),
+            fmtK(c.balance_owed),
             link, 'Request Payment', 'followup_payment',
             name, '', c.phone||'', fmtK(c.balance_owed)
           );

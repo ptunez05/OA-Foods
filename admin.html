@@ -139,28 +139,28 @@
       <!-- Recovery signals panel -->
       <div class="recovery-panel hidden" id="recovery-panel"></div>
 
-      <!-- 3 Pulse cards with status text (Kimi image 8) -->
+      <!-- 3 Pulse cards -->
       <div class="pulse-row" id="pulse-row">
         <!-- Money ring — master admin only -->
-        <div class="pulse-card pulse-card-money master-only" onclick="expandPulse('money')">
-          <div class="pulse-ring" id="ring-money">
+        <div class="pulse-card pulse-card-money master-only">
+          <div class="pulse-ring" id="ring-money" onclick="expandPulse('money')">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           </div>
-          <div class="pulse-label">Money</div>
+          <div class="pulse-label" onclick="goto('money')">My Cash Book</div>
           <div class="pulse-status-text" id="pulse-money-label">—</div>
         </div>
-        <div class="pulse-card" onclick="expandPulse('stock-p')">
-          <div class="pulse-ring" id="ring-stock">
+        <div class="pulse-card">
+          <div class="pulse-ring" id="ring-stock" onclick="expandPulse('stock-p')">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
           </div>
-          <div class="pulse-label">Stock</div>
+          <div class="pulse-label" onclick="goto('stock')">My Stock</div>
           <div class="pulse-status-text" id="pulse-stock-label">—</div>
         </div>
-        <div class="pulse-card" onclick="expandPulse('people-p')">
-          <div class="pulse-ring" id="ring-people">
+        <div class="pulse-card">
+          <div class="pulse-ring" id="ring-people" onclick="expandPulse('people-p')">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           </div>
-          <div class="pulse-label">People</div>
+          <div class="pulse-label" onclick="goto('followups')">Reminders</div>
           <div class="pulse-status-text" id="pulse-people-label">—</div>
         </div>
       </div>
@@ -194,22 +194,16 @@
         </button>
       </div>
 
-      <!-- Money Made (Revenue Trend) — collapsible, window toggle outside collapse -->
+      <!-- Monthly Sales — month card summary, replaces vertical bar chart -->
       <div class="chart-block" id="chart-months">
         <div class="chart-block-top">
           <div class="chart-block-title-row" onclick="toggleChart('chart-months')">
-            <span class="chart-title">Money Made</span>
+            <span class="chart-title">Monthly Sales</span>
             <span class="chart-toggle" id="chart-months-toggle">▼</span>
-          </div>
-          <div class="chart-window-strip">
-            <button class="chart-window-btn" onclick="setChartWindow(3,this)">3m</button>
-            <button class="chart-window-btn active" onclick="setChartWindow(6,this)">6m</button>
-            <button class="chart-window-btn" onclick="setChartWindow(9,this)">9m</button>
-            <button class="chart-window-btn" onclick="setChartWindow(12,this)">12m</button>
           </div>
         </div>
         <div class="chart-content">
-          <div class="chart-inner"><div class="bar-chart" id="bar-chart-months"></div></div>
+          <div id="bar-chart-months" class="month-cards-wrap"></div>
         </div>
       </div>
 
