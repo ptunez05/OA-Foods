@@ -28,13 +28,17 @@ var APP = {
   allProducts:[], openDrawer:'',
   // Phase 4 — auto-refresh
   _refreshTimer: null, _countdownTimer: null, _countdownSecs: 300,
-  // Phase 5 — tracking thresholds (overridden from settings on boot)
+  _realtimeDebounce: null,
+  // Phase 5 — tracking thresholds
   thresholds: {
-    active_days:     14,   // order in last N days = Active
-    dormant_days:    30,   // no order 15–N days = Gone Quiet
-    loyal_orders:     5,   // >= N orders + recent = Loyal
-    bigspend_amount: 50000,// total spend >= N = Big Spender
-  }
+    active_days:     14,
+    dormant_days:    30,
+    loyal_orders:     5,
+    bigspend_amount: 50000,
+  },
+  // Chart state
+  _chartWindow:  6,
+  _sellersMode: 'today',
 };
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
@@ -159,6 +163,7 @@ function bootApp() {
 
   setupSessionRefresh();
   startAutoRefresh();
+  setupRealtime();
 }
 
 function doLogout() {
@@ -385,7 +390,7 @@ function goto(name, el) {
   if (el) el.classList.add('active');
   var titles = {today:'Shop Today',orders:'Sales & Orders',items:'Items in Shop',
     stock:'My Stock',people:'People Asking',customers:'My Customers',
-    money:'Money Records',settings:'Shop Settings'};
+    money:'Money Records',settings:'Shop Settings',history:'Shop History'};
   var tb = document.getElementById('tb-title');
   if (tb) tb.textContent = titles[name] || name;
   var sidebar = document.getElementById('sidebar');
@@ -399,6 +404,7 @@ function goto(name, el) {
   if (name==='customers') loadCustomers();
   if (name==='money')     loadMoney();
   if (name==='settings')  loadSettings('general');
+  if (name==='history')   initHistoryPage();
 }
 function toggleSidebar(){ var s=document.getElementById('sidebar'); if(s) s.classList.toggle('open'); }
 function updateBottomNavForPage(name){
@@ -712,6 +718,209 @@ function getShopPulse() {
   var lastMD = new Date(now.getFullYear(), now.getMonth()-1, 1);
   var lastMK = lastMD.getFullYear()+'-'+String(lastMD.getMonth()+1).padStart(2,'0');
   var monthStart = thisMK+'-01';
+  var todayStart = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')+'T00:00:00';
+  // 12-month window for revenue trend
+  var twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth()-11, 1).toISOString();
+
+  return Promise.all([
+    // [0] Active products
+    sb().from('products').select('id,name,stock_qty,low_stock_alert,cost_price,consumer_price,active').eq('project_id',PROJECT_ID),
+    // [1] Money records (manual entries — kept for profit/cost data)
+    sb().from('money_records').select('month,total_collected,final_profit').eq('project_id',PROJECT_ID),
+    // [2] Pending orders
+    sb().from('orders').select('id,total,created_at').eq('project_id',PROJECT_ID).eq('status','pending'),
+    // [3] Confirmed orders this month (for monthly revenue + metric cards)
+    sb().from('orders').select('id,total,created_at,buyer_name').eq('project_id',PROJECT_ID).eq('status','confirmed').gte('created_at',monthStart),
+    // [4] Failed orders this month
+    sb().from('orders').select('id').eq('project_id',PROJECT_ID).eq('status','failed').gte('created_at',monthStart),
+    // [5] CRM clients
+    sb().from('clients').select('id,client_type,where_we_are,remind_me_on').eq('project_id',PROJECT_ID).neq('where_we_are','not_interested'),
+    // [6] Clients with outstanding balance
+    sb().from('clients').select('balance_owed').eq('project_id',PROJECT_ID).gt('balance_owed',0),
+    // [7] Settings
+    sb().from('settings').select('key,value').eq('project_id',PROJECT_ID),
+    // [8] Confirmed orders last 12 months with items — for revenue chart + top sellers by product
+    sb().from('orders').select('id,total,created_at,order_items(product_name,qty,unit_price)').eq('project_id',PROJECT_ID).eq('status','confirmed').gte('created_at',twelveMonthsAgo),
+    // [9] All confirmed orders for total customer count
+    sb().from('orders').select('buyer_name').eq('project_id',PROJECT_ID).eq('status','confirmed'),
+    // [10] Customers view for recovery signals
+    sb().from('customers').select('id,buyer_name,phone,total_orders,total_spent,last_order_date').eq('project_id',PROJECT_ID),
+    // [11] Today's confirmed orders for money pulse + today's sales card
+    sb().from('orders').select('id,total,created_at,order_items(product_name,qty,unit_price)').eq('project_id',PROJECT_ID).eq('status','confirmed').gte('created_at',todayStart),
+  ]).then(function(results) {
+    var products     = (results[0].data||[]);
+    var moneyRows    = (results[1].data||[]);
+    var pending      = (results[2].data||[]);
+    var confirmedMo  = (results[3].data||[]);
+    var failed       = (results[4].data||[]);
+    var clients      = (results[5].data||[]);
+    var debtors      = (results[6].data||[]);
+    var settRows     = (results[7].data||[]);
+    var allConfirmed = (results[8].data||[]);
+    var allOrders    = (results[9].data||[]);
+    var customers    = (results[10].data||[]);
+    var todayOrders  = (results[11].data||[]);
+
+    // Settings map
+    var sett = {};
+    settRows.forEach(function(s){ sett[s.key]=s.value; });
+    var monthlyTarget   = parseFloat(sett.monthly_target||0);
+    var lowStockDefault = parseInt(sett.low_stock_default||20);
+
+    // ── Money ─────────────────────────────────────────────────────────────────
+    // Primary source: live confirmed orders (not money_records which is manual)
+    var moneyThisMonth = confirmedMo.reduce(function(s,o){ return s+(parseFloat(o.total)||0); },0);
+    var todaySalesAmt  = todayOrders.reduce(function(s,o){ return s+(parseFloat(o.total)||0); },0);
+    var todaySalesQty  = todayOrders.reduce(function(s,o){
+      return s + (o.order_items||[]).reduce(function(q,i){ return q+(parseInt(i.qty)||1); },0);
+    },0);
+
+    // Last month from confirmed orders
+    var lastMonthStart = lastMK+'-01';
+    var lastMonthEnd   = thisMK+'-01';
+    var moneyLastMonth = allConfirmed.filter(function(o){
+      return o.created_at >= lastMonthStart && o.created_at < lastMonthEnd;
+    }).reduce(function(s,o){ return s+(parseFloat(o.total)||0); },0);
+
+    var moneyChangePct = moneyLastMonth>0 ? Math.round(((moneyThisMonth-moneyLastMonth)/moneyLastMonth)*100) : 0;
+    var totalMoneyIn   = allOrders.length > 0
+      ? allConfirmed.reduce(function(s,o){ return s+(parseFloat(o.total)||0); },0)
+      : moneyRows.reduce(function(s,r){ return s+(parseFloat(r.total_collected)||0); },0);
+
+    // ── Stock ─────────────────────────────────────────────────────────────────
+    var activeProducts = products.filter(function(p){ return p.active; });
+    var stockWorth=0, ifAllSold=0, lowItems=[];
+    activeProducts.forEach(function(p){
+      var qty   = parseInt(p.stock_qty)||0;
+      var cost  = parseFloat(p.cost_price)||0;
+      var sell  = parseFloat(p.consumer_price)||0;
+      var alert = parseInt(p.low_stock_alert)||lowStockDefault;
+      stockWorth += qty*cost;
+      ifAllSold  += qty*sell;
+      if (qty < alert) lowItems.push({name:p.name, stock:qty, alert_level:alert});
+    });
+    var possibleProfit = ifAllSold - stockWorth;
+
+    // ── People / CRM ──────────────────────────────────────────────────────────
+    var retailC=0, wholesaleC=0, distributorC=0, overdueFollowups=0;
+    clients.forEach(function(c){
+      if (c.client_type==='retail')      retailC++;
+      if (c.client_type==='wholesale')   wholesaleC++;
+      if (c.client_type==='distributor') distributorC++;
+      if (c.remind_me_on && new Date(c.remind_me_on) < new Date() && c.where_we_are !== 'not_interested') overdueFollowups++;
+    });
+    var peopleStillOwe = debtors.reduce(function(s,r){ return s+(parseFloat(r.balance_owed)||0); },0);
+
+    // ── Orders confirmed today ─────────────────────────────────────────────────
+    var confirmedTodayCount = todayOrders.length;
+
+    // ── Unique customers ───────────────────────────────────────────────────────
+    var uniqueCustomers = {};
+    allOrders.forEach(function(o){ if(o.buyer_name) uniqueCustomers[o.buyer_name]=1; });
+
+    // ── Revenue trend — from live orders, last 12 months ──────────────────────
+    var chartMap = {};
+    allConfirmed.forEach(function(o){
+      var m = (o.created_at||'').slice(0,7); // 'YYYY-MM'
+      if (!m) return;
+      if (!chartMap[m]) chartMap[m]=0;
+      chartMap[m] += parseFloat(o.total)||0;
+    });
+    var monthlyChart = Object.keys(chartMap).sort().map(function(m){ return {month:m,revenue:chartMap[m]}; });
+
+    // ── Top sellers — by product name from order_items ────────────────────────
+    // TODAY sellers
+    var todaySellerMap = {};
+    todayOrders.forEach(function(o){
+      (o.order_items||[]).forEach(function(i){
+        var k = i.product_name||'Unknown';
+        if (!todaySellerMap[k]) todaySellerMap[k] = {qty:0, revenue:0};
+        todaySellerMap[k].qty     += parseInt(i.qty)||1;
+        todaySellerMap[k].revenue += (parseFloat(i.unit_price)||0)*(parseInt(i.qty)||1);
+      });
+    });
+    var topSellersToday = Object.keys(todaySellerMap).map(function(k){
+      return {name:k, qty:todaySellerMap[k].qty, revenue:todaySellerMap[k].revenue};
+    }).sort(function(a,b){ return b.qty-a.qty; }).slice(0,8);
+
+    // ALL TIME (last 12 months) sellers
+    var allSellerMap = {};
+    allConfirmed.forEach(function(o){
+      (o.order_items||[]).forEach(function(i){
+        var k = i.product_name||'Unknown';
+        if (!allSellerMap[k]) allSellerMap[k] = {qty:0, revenue:0};
+        allSellerMap[k].qty     += parseInt(i.qty)||1;
+        allSellerMap[k].revenue += (parseFloat(i.unit_price)||0)*(parseInt(i.qty)||1);
+      });
+    });
+    var topSellersAll = Object.keys(allSellerMap).map(function(k){
+      return {name:k, qty:allSellerMap[k].qty, revenue:allSellerMap[k].revenue};
+    }).sort(function(a,b){ return b.qty-a.qty; }).slice(0,8);
+
+    // ── Pulse colours ─────────────────────────────────────────────────────────
+    var targetPct   = monthlyTarget>0 ? Math.min(100,Math.round((moneyThisMonth/monthlyTarget)*100)) : 0;
+    var moneyPulse  = todaySalesAmt>0 ? 'green' : moneyThisMonth>0 ? 'yellow' : 'grey';
+    var stockPulse  = lowItems.length===0?'green':lowItems.length<3?'yellow':'red';
+    var peoplePulse = (retailC+wholesaleC+distributorC)===0?'grey':overdueFollowups>0?'red':'green';
+
+    // ── Recovery signals ──────────────────────────────────────────────────────
+    var recoveryGoneQuiet=[], recoveryAtRisk=[];
+    customers.forEach(function(c){
+      var cs=getCustomerState(c);
+      if(cs.state==='gone_quiet') recoveryGoneQuiet.push({name:c.buyer_name||'Customer',phone:c.phone||'',days:cs.days,spent:c.total_spent});
+      if(cs.tier==='at_risk')     recoveryAtRisk.push({name:c.buyer_name||'Customer',phone:c.phone||'',days:cs.days,spent:c.total_spent});
+    });
+    recoveryGoneQuiet.sort(function(a,b){ return b.days-a.days; });
+    recoveryAtRisk.sort(function(a,b){ return (parseFloat(b.spent)||0)-(parseFloat(a.spent)||0); });
+
+    return {success:true, data:{
+      // Money
+      money_in_this_month:   moneyThisMonth,
+      money_in_last_month:   moneyLastMonth,
+      money_change_pct:      moneyChangePct,
+      total_money_in:        totalMoneyIn,
+      monthly_target:        monthlyTarget,
+      target_reached_pct:    targetPct,
+      people_still_owe_you:  peopleStillOwe,
+      money_pulse:           moneyPulse,
+      money_message:         todaySalesAmt>0?'Money came in today — '+confirmedTodayCount+' sale'+(confirmedTodayCount>1?'s':'')+' confirmed.':moneyThisMonth>0?'No sales confirmed yet today.':'No confirmed sales this month yet.',
+      // Today's sales (for metric card)
+      today_sales_amount:    todaySalesAmt,
+      today_sales_qty:       todaySalesQty,
+      today_orders_count:    confirmedTodayCount,
+      // Stock
+      stock_worth:           stockWorth,
+      if_all_sold:           ifAllSold,
+      possible_profit:       possibleProfit,
+      low_stock_count:       lowItems.length,
+      items_running_low:     lowItems,
+      total_products:        activeProducts.length,
+      stock_pulse:           stockPulse,
+      stock_message:         lowItems.length===0?'All items stocked up.':'Some items need restocking.',
+      // Orders
+      orders_waiting:        pending.length,
+      confirmed_orders:      confirmedTodayCount,
+      failed_orders:         failed.length,
+      total_customers:       Object.keys(uniqueCustomers).length,
+      // People
+      retail_clients:        retailC,
+      wholesale_clients:     wholesaleC,
+      distributor_clients:   distributorC,
+      follow_ups_overdue:    overdueFollowups,
+      people_pulse:          peoplePulse,
+      people_message:        overdueFollowups>0?overdueFollowups+' follow-up(s) overdue.':'All follow-ups up to date.',
+      // Charts
+      monthly_chart:         monthlyChart,
+      top_sellers_today:     topSellersToday,
+      top_sellers_all:       topSellersAll,
+      // Recovery
+      recovery_gone_quiet:   recoveryGoneQuiet.slice(0,5),
+      recovery_at_risk:      recoveryAtRisk.slice(0,5),
+    }};
+  }).catch(function(e){
+    return {success:false, error:e.message||'Could not load shop data'};
+  });
+}
 
   return Promise.all([
     // Active products
@@ -1177,9 +1386,10 @@ function addMoneyRecord(params) {
   var cost     = parseFloat(params.cost_per_pack)||0;
   var sold     = parseFloat(params.sold_per_pack)||0;
   var spoilt   = parseInt(params.spoilt_packs)||0;
-  // Computed columns handle this in DB but we return profit for the toast
   var profit   = (packs*sold) - (packs*cost) - (spoilt*cost);
 
+  // Manual entry always saves as entered — this is the source of truth
+  // for production cost and spoilage data that orders alone can't provide.
   return sb().from('money_records').insert({
     project_id:    PROJECT_ID,
     month:         params.month,
@@ -1193,7 +1403,15 @@ function addMoneyRecord(params) {
   }).then(function(r){
     if (r.error) return {success:false, error:r.error.message};
     writeAudit('add_money_record',params.product_name+' for '+params.month,'money_record',null);
-    return {success:true, final_profit:profit};
+    // Also sync live revenue from confirmed orders for this month as a reference
+    // (returned in the toast so admin can compare manual vs actual)
+    var monthStart = params.month+'-01T00:00:00';
+    var nextMonth  = params.month.slice(0,4)+'-'+String((parseInt(params.month.slice(5,7))||1)+1).padStart(2,'0')+'-01T00:00:00';
+    return sb().from('orders').select('total').eq('project_id',PROJECT_ID).eq('status','confirmed').gte('created_at',monthStart).lt('created_at',nextMonth)
+      .then(function(r2){
+        var liveRev = (r2.data||[]).reduce(function(s,o){ return s+(parseFloat(o.total)||0); },0);
+        return {success:true, final_profit:profit, live_revenue:liveRev};
+      });
   });
 }
 
@@ -1326,6 +1544,302 @@ function esc(s)  { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;
 function badge(text,cls){ return '<span class="badge badge-'+esc(cls||text)+'">'+esc(text)+'</span>'; }
 function initials(name){ var p=String(name||'').trim().split(/\s+/); return (p[0]?p[0][0]:'')+(p[1]?p[1][0]:''); }
 
+// ── REALTIME SUBSCRIPTIONS ─────────────────────────────────────────────────────
+// Auto-refreshes Shop Today whenever orders or products change in Supabase.
+// Money circle + stock circle update the moment you confirm an order.
+
+function setupRealtime() {
+  try {
+    sb().channel('oa-realtime')
+      .on('postgres_changes', {
+        event:  '*',
+        schema: 'public',
+        table:  'orders',
+        filter: 'project_id=eq.' + PROJECT_ID
+      }, function() {
+        clearTimeout(APP._realtimeDebounce);
+        APP._realtimeDebounce = setTimeout(function() {
+          var active = document.querySelector('.page.active');
+          if (active && active.id === 'page-today') loadToday();
+          if (active && active.id === 'page-orders') loadOrders(APP.currentOrderTab);
+        }, 800);
+      })
+      .on('postgres_changes', {
+        event:  '*',
+        schema: 'public',
+        table:  'products',
+        filter: 'project_id=eq.' + PROJECT_ID
+      }, function() {
+        clearTimeout(APP._realtimeDebounce);
+        APP._realtimeDebounce = setTimeout(function() {
+          var active = document.querySelector('.page.active');
+          if (active && active.id === 'page-today') loadToday();
+          if (active && active.id === 'page-items') loadItems();
+          if (active && active.id === 'page-stock') loadStock(APP.currentStockTab);
+        }, 800);
+      })
+      .subscribe();
+  } catch(e) {
+    console.warn('OA Realtime unavailable — auto-refresh covers it:', e.message);
+  }
+}
+
+
+// ── SHOP HISTORY ──────────────────────────────────────────────────────────────
+// Date-range query across orders, clients, products.
+// Returns a structured report the admin can copy for WhatsApp, plain text, or CSV.
+
+var _historyData = null;
+
+function initHistoryPage() {
+  // Default to yesterday → today on first open
+  var today = new Date();
+  var yest  = new Date(today); yest.setDate(yest.getDate()-1);
+  var todayStr = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  var yestStr  = yest.getFullYear()+'-'+String(yest.getMonth()+1).padStart(2,'0')+'-'+String(yest.getDate()).padStart(2,'0');
+  var fromEl = document.getElementById('hist-from');
+  var toEl   = document.getElementById('hist-to');
+  if (fromEl && !fromEl.value) fromEl.value = yestStr;
+  if (toEl   && !toEl.value)   toEl.value   = todayStr;
+  // Set max to today, min to 1 year ago
+  var oneYearAgo = new Date(today); oneYearAgo.setFullYear(oneYearAgo.getFullYear()-1);
+  var minStr = oneYearAgo.getFullYear()+'-'+String(oneYearAgo.getMonth()+1).padStart(2,'0')+'-'+String(oneYearAgo.getDate()).padStart(2,'0');
+  if (fromEl) { fromEl.max = todayStr; fromEl.min = minStr; }
+  if (toEl)   { toEl.max   = todayStr; toEl.min   = minStr; }
+}
+
+function setHistoryRange(days) {
+  var today = new Date();
+  var from  = new Date(today); from.setDate(from.getDate()-days);
+  var todayStr = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  var fromStr  = from.getFullYear()+'-'+String(from.getMonth()+1).padStart(2,'0')+'-'+String(from.getDate()).padStart(2,'0');
+  var fromEl = document.getElementById('hist-from');
+  var toEl   = document.getElementById('hist-to');
+  if (fromEl) fromEl.value = fromStr;
+  if (toEl)   toEl.value   = todayStr;
+  // Highlight active shortcut
+  document.querySelectorAll('.hist-shortcut').forEach(function(b){ b.classList.remove('active'); });
+  // Find which button was clicked by days value
+  var labels = {1:'Yesterday',7:'Last 7 days',30:'Last 30 days',90:'Last 3 months',365:'Full year'};
+  document.querySelectorAll('.hist-shortcut').forEach(function(b){
+    if (b.textContent.trim() === (labels[days]||'')) b.classList.add('active');
+  });
+  loadHistory();
+}
+
+function loadHistory() {
+  var fromVal = document.getElementById('hist-from') && document.getElementById('hist-from').value;
+  var toVal   = document.getElementById('hist-to')   && document.getElementById('hist-to').value;
+  var body    = document.getElementById('history-body');
+  var actions = document.getElementById('history-actions');
+  if (!fromVal || !toVal) { toast('Pick a date range first','bad'); return; }
+  if (fromVal > toVal) { toast('Start date must be before end date','bad'); return; }
+  // Enforce 1-year max window
+  var diffMs   = new Date(toVal) - new Date(fromVal);
+  var diffDays = diffMs / 86400000;
+  if (diffDays > 366) { toast('Maximum range is 1 year','bad'); return; }
+
+  body.innerHTML = '<div class="loading-msg">Pulling history…</div>';
+  if (actions) actions.classList.add('hidden');
+
+  var fromISO = fromVal + 'T00:00:00';
+  var toISO   = toVal   + 'T23:59:59';
+
+  Promise.all([
+    // Confirmed orders in range
+    sb().from('orders').select('id,tracking_ref,buyer_name,phone,state,buyer_type,total,created_at,order_items(product_name,qty,unit_price)').eq('project_id',PROJECT_ID).eq('status','confirmed').gte('created_at',fromISO).lte('created_at',toISO).order('created_at',{ascending:false}),
+    // Failed orders in range
+    sb().from('orders').select('id,tracking_ref,buyer_name,total,created_at').eq('project_id',PROJECT_ID).eq('status','failed').gte('created_at',fromISO).lte('created_at',toISO),
+    // New clients in range
+    sb().from('clients').select('id,client_type,contact_name,shop_name,state,where_we_are,created_at').eq('project_id',PROJECT_ID).gte('created_at',fromISO).lte('created_at',toISO),
+    // Stock changes in range
+    sb().from('stock_log').select('product_name,change_qty,reason,done_by_name,recorded_at').eq('project_id',PROJECT_ID).gte('recorded_at',fromISO).lte('recorded_at',toISO).order('recorded_at',{ascending:false}),
+  ]).then(function(results) {
+    var confirmed = results[0].data||[];
+    var failed    = results[1].data||[];
+    var clients   = results[2].data||[];
+    var stockLog  = results[3].data||[];
+
+    // Compute totals
+    var totalRev    = confirmed.reduce(function(s,o){ return s+(parseFloat(o.total)||0); },0);
+    var totalOrders = confirmed.length;
+    var totalFailed = failed.length;
+    var totalNewLeads = clients.length;
+
+    // Product breakdown
+    var productMap = {};
+    confirmed.forEach(function(o){
+      (o.order_items||[]).forEach(function(i){
+        var k = i.product_name||'Unknown';
+        if (!productMap[k]) productMap[k] = {qty:0, revenue:0};
+        productMap[k].qty     += parseInt(i.qty)||1;
+        productMap[k].revenue += (parseFloat(i.unit_price)||0)*(parseInt(i.qty)||1);
+      });
+    });
+    var products = Object.keys(productMap).map(function(k){ return Object.assign({name:k},productMap[k]); }).sort(function(a,b){ return b.qty-a.qty; });
+
+    _historyData = { confirmed:confirmed, failed:failed, clients:clients, stockLog:stockLog,
+      from:fromVal, to:toVal, totalRev:totalRev, totalOrders:totalOrders, products:products,
+      totalFailed:totalFailed, totalNewLeads:totalNewLeads };
+
+    renderHistoryReport(_historyData);
+    if (actions) actions.classList.remove('hidden');
+  }).catch(function(e){
+    body.innerHTML = '<div class="loading-msg">Error loading history: '+esc(e.message||'')+'</div>';
+  });
+}
+
+function renderHistoryReport(d) {
+  var body = document.getElementById('history-body');
+  var html = '';
+
+  // Header summary cards
+  html += '<div class="hist-summary-strip">';
+  html += '<div class="hist-sum-card"><div class="hist-sum-val">₦'+fmtK(d.totalRev)+'</div><div class="hist-sum-label">Total Sales</div></div>';
+  html += '<div class="hist-sum-card"><div class="hist-sum-val">'+d.totalOrders+'</div><div class="hist-sum-label">Orders Confirmed</div></div>';
+  html += '<div class="hist-sum-card"><div class="hist-sum-val">'+d.totalFailed+'</div><div class="hist-sum-label">Fell Through</div></div>';
+  html += '<div class="hist-sum-card"><div class="hist-sum-val">'+d.totalNewLeads+'</div><div class="hist-sum-label">New Leads</div></div>';
+  html += '</div>';
+
+  // Top products
+  if (d.products.length) {
+    html += '<div class="hist-section-title">Items Sold</div>';
+    html += '<div class="hist-product-list">';
+    d.products.forEach(function(p,i){
+      html += '<div class="hist-product-row"><span class="hist-rank">'+(i+1)+'</span><div class="hist-prod-info"><div class="hist-prod-name">'+esc(p.name)+'</div><div class="hist-prod-meta">'+p.qty+' sold</div></div><div class="hist-prod-rev">₦'+fmtK(p.revenue)+'</div></div>';
+    });
+    html += '</div>';
+  }
+
+  // Confirmed orders list
+  if (d.confirmed.length) {
+    html += '<div class="hist-section-title">Confirmed Orders</div>';
+    html += '<div class="hist-orders-list">';
+    d.confirmed.slice(0,20).forEach(function(o){
+      var dt = o.created_at ? new Date(o.created_at).toLocaleDateString('en-NG') : '';
+      html += '<div class="hist-order-row"><div class="hist-order-info"><div class="hist-order-name">'+esc(o.buyer_name||'')+'</div><div class="hist-order-meta">'+esc(o.tracking_ref||'')+' · '+dt+'</div></div><div class="hist-order-amt">₦'+fmtK(o.total)+'</div></div>';
+    });
+    if (d.confirmed.length > 20) html += '<div class="hist-more">+' +(d.confirmed.length-20)+' more orders — copy for full list</div>';
+    html += '</div>';
+  }
+
+  // New leads
+  if (d.clients.length) {
+    html += '<div class="hist-section-title">New Leads ('+d.clients.length+')</div>';
+    html += '<div class="hist-leads-list">';
+    d.clients.slice(0,10).forEach(function(c){
+      var typeLabel = c.client_type==='retail'?'Small Shop':c.client_type==='wholesale'?'Wholesaler':'Distributor';
+      html += '<div class="hist-lead-row"><span class="hist-lead-type">'+typeLabel+'</span><span>'+esc(c.contact_name||c.shop_name||'')+'</span><span class="hist-lead-state">'+esc(c.state||'')+'</span></div>';
+    });
+    html += '</div>';
+  }
+
+  if (!d.confirmed.length && !d.clients.length) {
+    html += '<div class="hist-empty">No activity found in this date range.</div>';
+  }
+
+  body.innerHTML = html;
+}
+
+function copyHistoryReport(format) {
+  if (!_historyData) { toast('No report loaded yet','bad'); return; }
+  var d = _historyData;
+  var label = d.from + ' to ' + d.to;
+  var text  = '';
+
+  if (format === 'whatsapp') {
+    text  = '📊 *OA SHOP HISTORY REPORT*
+';
+    text += '📅 *Period:* '+label+'
+';
+    text += '━━━━━━━━━━━━━━━━━━━━━━━━
+';
+    text += '💰 *Total Sales:* ₦'+fmtK(d.totalRev)+'
+';
+    text += '✅ *Orders Confirmed:* '+d.totalOrders+'
+';
+    text += '❌ *Orders Fell Through:* '+d.totalFailed+'
+';
+    text += '🤝 *New Leads:* '+d.totalNewLeads+'
+
+';
+    if (d.products.length) {
+      text += '📦 *Items Sold:*
+';
+      d.products.forEach(function(p,i){ text += (i+1)+'. '+p.name+' — '+p.qty+' sold (₦'+fmtK(p.revenue)+')
+'; });
+      text += '
+';
+    }
+    if (d.confirmed.length) {
+      text += '🧾 *Order Summary:*
+';
+      d.confirmed.slice(0,10).forEach(function(o){
+        var dt = o.created_at ? new Date(o.created_at).toLocaleDateString('en-NG') : '';
+        text += '• '+esc(o.buyer_name||'')+' — ₦'+fmtK(o.total)+' ('+dt+')
+';
+      });
+      if (d.confirmed.length > 10) text += '...and '+(d.confirmed.length-10)+' more
+';
+    }
+    text += '
+_Generated by OA Shop Book_';
+
+  } else if (format === 'csv') {
+    text = 'Date,Customer,Tracking Ref,Type,Amount (₦)
+';
+    d.confirmed.forEach(function(o){
+      var dt = o.created_at ? new Date(o.created_at).toLocaleDateString('en-NG') : '';
+      text += [dt, o.buyer_name||'', o.tracking_ref||'', o.buyer_type||'', parseFloat(o.total)||0].join(',')+'
+';
+    });
+
+  } else {
+    // Plain text — good for pasting into Word/spreadsheet notes
+    text  = 'OA SHOP HISTORY — '+label+'
+';
+    text += '='.repeat(40)+'
+';
+    text += 'Total Sales:         ₦'+fmtK(d.totalRev)+'
+';
+    text += 'Orders Confirmed:    '+d.totalOrders+'
+';
+    text += 'Orders Fell Through: '+d.totalFailed+'
+';
+    text += 'New Leads:           '+d.totalNewLeads+'
+
+';
+    if (d.products.length) {
+      text += 'ITEMS SOLD:
+';
+      d.products.forEach(function(p,i){ text += (i+1)+'. '+p.name+' — '+p.qty+' packs (₦'+fmtK(p.revenue)+')
+'; });
+      text += '
+';
+    }
+    if (d.confirmed.length) {
+      text += 'ORDERS:
+';
+      d.confirmed.forEach(function(o){
+        var dt = o.created_at ? new Date(o.created_at).toLocaleDateString('en-NG') : '';
+        text += dt+' | '+esc(o.buyer_name||'')+' | ₦'+fmtK(o.total)+' | '+(o.tracking_ref||'')+'
+';
+      });
+    }
+  }
+
+  navigator.clipboard.writeText(text).then(function(){
+    toast('Copied! Ready to paste','good');
+  }).catch(function(){
+    // Fallback for older Android
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast('Copied!','good');
+  });
+}
+
 // ── CHART COLLAPSE ────────────────────────────────────────────────────────────
 
 function initChartStates(){
@@ -1364,13 +1878,16 @@ function renderGreeting(){
 }
 
 function renderPulseRings(d){
-  var moneyC  = d.money_pulse  || ((!d.money_in_this_month||d.money_in_this_month===0)?'grey':'red');
-  var stockC  = d.stock_pulse  || ((!d.stock_worth||d.stock_worth===0)?'grey':'red');
-  var peopleC = d.people_pulse || (((d.retail_clients||0)+(d.wholesale_clients||0)+(d.distributor_clients||0))===0?'grey':'red');
+  var moneyC  = d.money_pulse  || 'grey';
+  var stockC  = d.stock_pulse  || 'grey';
+  var peopleC = d.people_pulse || 'grey';
+  // Money ring — master only
+  var moneyCard = document.querySelector('.pulse-card-money');
+  if (moneyCard) moneyCard.style.display = APP.role==='master' ? '' : 'none';
   setPulse('ring-money',moneyC); setPulse('ring-stock',stockC); setPulse('ring-people',peopleC);
-  var ml={green:'FLOWING WELL',yellow:'MOVING STEADY',red:'NEEDS ATTENTION',grey:'NO DATA YET'};
-  var sl={green:'ALL STOCKED UP',yellow:'LOSING STEAM',red:'RUNNING DRY',grey:'NO RECORDS YET'};
-  var pl={green:'ALL QUIET',yellow:'SOME INTEREST',red:'HIGH VOLUME',grey:'NO LEADS YET'};
+  var ml={green:'FLOWING',yellow:'STEADY',red:'CHECK NOW',grey:'NO DATA'};
+  var sl={green:'STOCKED UP',yellow:'LOW ON SOME',red:'RUNNING DRY',grey:'NO STOCK DATA'};
+  var pl={green:'UP TO DATE',yellow:'NEEDS FOLLOW-UP',red:'OVERDUE',grey:'NO LEADS YET'};
   setStatusText('pulse-money-label',ml[moneyC]||ml.grey,moneyC);
   setStatusText('pulse-stock-label',sl[stockC]||sl.grey,stockC);
   setStatusText('pulse-people-label',pl[peopleC]||pl.grey,peopleC);
@@ -1387,7 +1904,8 @@ function expandPulse(type){
   if(type==='money'){
     var ch=d.money_change_pct||0,arr=ch>0?'▲':ch<0?'▼':'—',col=ch>0?'color:var(--green)':ch<0?'color:var(--red)':'';
     drawer.innerHTML='<div class="drawer-msg">'+esc(d.money_message)+'</div>'+
-      drow('Money in this month','₦'+fmt(d.money_in_this_month))+
+      drow("Today\'s sales",'₦'+fmt(d.today_sales_amount))+
+      drow('This month so far','₦'+fmt(d.money_in_this_month))+
       drow('Last month','₦'+fmt(d.money_in_last_month))+
       drow('Change vs last month','<span style="'+col+'">'+arr+' '+Math.abs(ch)+'%</span>')+
       drow('People still owe you','₦'+fmt(d.people_still_owe_you))+
@@ -1399,17 +1917,17 @@ function expandPulse(type){
     var inner='<div class="drawer-msg">'+esc(d.stock_message)+'</div>'+
       drow('What your stock is worth','₦'+fmt(d.stock_worth))+
       drow('If you sell everything today','₦'+fmt(d.if_all_sold))+
-      drow('Possible profit from all stock','₦'+fmt(d.possible_profit));
+      drow('Possible profit','₦'+fmt(d.possible_profit));
     if(items.length){
-      inner+='<div class="drawer-detail" style="margin-top:10px;font-weight:800">Items running low:</div>';
+      inner+='<div class="drawer-detail" style="margin-top:10px;font-weight:800">Running low:</div>';
       items.forEach(function(i){inner+=drow(esc(i.name),'<span style="color:var(--red);font-weight:800">'+i.stock+' left</span> (alert at '+i.alert_level+')');});
     }
     drawer.innerHTML=inner;
   }
   if(type==='people-p'){
     drawer.innerHTML='<div class="drawer-msg">'+esc(d.people_message)+'</div>'+
-      drow('Small shops asking',d.retail_clients||0)+
-      drow('Wholesalers asking',d.wholesale_clients||0)+
+      drow('Small shops talking to you',d.retail_clients||0)+
+      drow('Wholesalers',d.wholesale_clients||0)+
       drow('Distributors',d.distributor_clients||0)+
       drow('Follow-ups overdue',d.follow_ups_overdue||0);
   }
@@ -1418,18 +1936,49 @@ function drow(label,val){ return '<div class="drawer-row"><span>'+label+'</span>
 
 function renderMetricCards(d){
   var grid=document.getElementById('metric-grid'); if(!grid) return;
-  grid.innerHTML=
-    mCard('mc-money','₦'+fmt(d.money_in_this_month),'MONEY IN','All-time: ₦'+fmt(d.total_money_in),'vs last month: '+(d.money_change_pct>0?'+':'')+(d.money_change_pct||0)+'%')+
-    mCard('mc-orders',String(d.orders_waiting||0),'ORDERS WAITING','Confirmed today: '+(d.confirmed_orders||0),'Fell through: '+(d.failed_orders||0))+
-    mCard('mc-stock',String(d.low_stock_count||0),'LOW ITEMS','Active items: '+(d.total_products||0),'Stock worth: ₦'+fmt(d.stock_worth))+
-    mCard('mc-people',String((d.retail_clients||0)+(d.wholesale_clients||0)+(d.distributor_clients||0)),'PEOPLE ASKING','Customers: '+(d.total_customers||0),'Overdue follow-ups: '+(d.follow_ups_overdue||0));
+  var todayAmt = d.today_sales_amount||0;
+  var todayQty = d.today_sales_qty||0;
+  var todayCnt = d.today_orders_count||0;
+  var waiting  = d.orders_waiting||0;
+  var failed   = d.failed_orders||0;
+  var lowCount = d.low_stock_count||0;
+  var owedAmt  = d.people_still_owe_you||0;
+  var overdue  = d.follow_ups_overdue||0;
+  grid.innerHTML =
+    mCard('mc-today',
+      todayAmt>0 ? '₦'+fmtK(todayAmt) : '₦0',
+      "TODAY\'S SALES",
+      todayQty+' unit'+(todayQty!==1?'s':'')+' sold · '+todayCnt+' order'+(todayCnt!==1?'s':'')+' confirmed',
+      todayAmt===0 ? 'No sales confirmed yet today' : null
+    )+
+    mCard('mc-orders',
+      String(waiting),
+      'ORDERS WAITING',
+      waiting===0 ? 'All clear — nothing pending' : waiting+' order'+(waiting!==1?'s':'')+' need your decision',
+      failed>0 ? failed+' fell through this month' : null
+    )+
+    mCard('mc-stock',
+      String(lowCount),
+      lowCount===0 ? 'STOCK HEALTHY' : 'ITEMS RUNNING LOW',
+      lowCount===0 ? 'All '+(d.total_products||0)+' items above alert level' : 'Stock worth: ₦'+fmtK(d.stock_worth||0),
+      lowCount>0 ? 'Tap to see which items' : null
+    )+
+    mCard('mc-owed',
+      owedAmt>0 ? '₦'+fmtK(owedAmt) : '₦0',
+      'PEOPLE OWE YOU',
+      owedAmt===0 ? 'No outstanding balances' : 'Collect before month end',
+      overdue>0 ? overdue+' follow-up'+(overdue!==1?'s':'')+' overdue' : null
+    );
 }
 function mCard(cls,val,label,sub1,sub2){
   return '<div class="metric-card '+cls+'" onclick="toggleMcDetail(this)">'+
     '<div class="mc-val">'+val+'</div><div class="mc-label">'+label+'</div>'+
-    '<div class="mc-detail">'+(sub1?'<div>'+sub1+'</div>':'')+(sub2?'<div style="margin-top:4px">'+sub2+'</div>':'')+'</div></div>';
+    '<div class="mc-detail">'+
+      (sub1?'<div>'+sub1+'</div>':'')+
+      (sub2?'<div style="margin-top:4px;color:var(--red)">'+sub2+'</div>':'')+
+    '</div></div>';
 }
-function toggleMcDetail(card){ var d=card.querySelector('.mc-detail'); if(d) d.classList.toggle('open'); }
+function toggleMcDetail(card){ var det=card.querySelector('.mc-detail'); if(det) det.classList.toggle('open'); }
 
 function renderTargetBar(d){
   var pct=d.target_reached_pct||0;
@@ -1437,32 +1986,56 @@ function renderTargetBar(d){
       e3=document.getElementById('target-label'),e4=document.getElementById('target-sub');
   if(e1) e1.textContent=pct+'%';
   if(e2) e2.style.width=pct+'%';
-  if(e3) e3.textContent='Monthly Revenue Goal — ₦'+fmt(d.monthly_target);
-  if(e4) e4.textContent='₦'+fmt(d.money_in_this_month)+' earned so far this month';
+  if(e3) e3.textContent='Monthly Goal — ₦'+fmt(d.monthly_target);
+  if(e4) e4.textContent='₦'+fmt(d.money_in_this_month)+' earned · ₦'+fmt(Math.max(0,(d.monthly_target||0)-(d.money_in_this_month||0)))+' to go';
 }
 
 function renderMonthlyChart(d){
-  var chart=d.monthly_chart||[],el=document.getElementById('bar-chart-months'); if(!el) return;
-  if(!chart.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px 0">No data yet — confirm some sales first</div>';return;}
-  var max=Math.max.apply(null,chart.map(function(m){return m.revenue;}))||1;
-  el.innerHTML=chart.map(function(m){
-    var h=Math.max(4,Math.round((m.revenue/max)*90)),lbl=m.month?m.month.slice(5):'';
-    return '<div class="bc-wrap"><div class="bc-bar" style="height:'+h+'px"><div class="bc-tip">₦'+fmt(m.revenue)+'</div></div><div class="bc-label">'+lbl+'</div></div>';
+  var chart=d.monthly_chart||[], el=document.getElementById('bar-chart-months'); if(!el) return;
+  var windowMonths=parseInt(APP._chartWindow||6);
+  var filtered=chart.slice(-windowMonths);
+  if(!filtered.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px 0">No confirmed sales yet</div>';return;}
+  var max=Math.max.apply(null,filtered.map(function(m){return m.revenue;}))||1;
+  el.innerHTML=filtered.map(function(m){
+    var h=Math.max(4,Math.round((m.revenue/max)*90));
+    var mo=m.month?m.month.slice(5):''; var yr=m.month?m.month.slice(2,4):'';
+    return '<div class="bc-wrap"><div class="bc-bar" style="height:'+h+'px"><div class="bc-tip">₦'+fmtK(m.revenue)+'</div></div><div class="bc-label">'+mo+'/'+yr+'</div></div>';
   }).join('');
 }
 
+function setChartWindow(months,btn){
+  APP._chartWindow=months;
+  document.querySelectorAll('.chart-window-btn').forEach(function(b){b.classList.remove('active');});
+  if(btn) btn.classList.add('active');
+  renderMonthlyChart(APP.pulseData||{});
+}
+
 function renderTopSellers(d){
-  var sellers=d.top_sellers||[],el=document.getElementById('hbar-sellers'); if(!el) return;
-  if(!sellers.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px 0">No sales yet</div>';return;}
+  var el=document.getElementById('hbar-sellers'); if(!el) return;
+  var mode=APP._sellersMode||'today';
+  var sellers=mode==='today'?(d.top_sellers_today||[]):(d.top_sellers_all||[]);
+  if(!sellers.length){
+    el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px 0">'+(mode==='today'?'No sales confirmed today yet':'No sales data yet')+'</div>';
+    return;
+  }
   var max=sellers[0].qty||1;
   el.innerHTML=sellers.map(function(s){
     var w=Math.round((s.qty/max)*100);
     return '<div class="hbc-row">'+
-      '<div class="hbc-name-wrap"><div class="hbc-name">'+esc(s.name)+'</div><div class="hbc-sub">'+s.qty+' sales</div></div>'+
+      '<div class="hbc-name-wrap"><div class="hbc-name">'+esc(s.name)+'</div>'+
+        '<div class="hbc-sub">'+s.qty+' sold · ₦'+fmtK(s.revenue)+'</div></div>'+
       '<div class="hbc-bar-wrap"><div class="hbc-bar" style="width:'+w+'%"></div></div>'+
-      '</div>';
+    '</div>';
   }).join('');
 }
+
+function setSellersMode(mode,btn){
+  APP._sellersMode=mode;
+  document.querySelectorAll('.sellers-mode-btn').forEach(function(b){b.classList.remove('active');});
+  if(btn) btn.classList.add('active');
+  renderTopSellers(APP.pulseData||{});
+}
+
 
 function renderLowStockBanner(d){
   var banner=document.getElementById('low-stock-banner'); if(!banner) return;

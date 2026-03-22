@@ -407,12 +407,27 @@ function loadMoney(){
   renderRefreshBar('money');
   var el=document.getElementById('money-body'), sum=document.getElementById('money-summary');
   el.innerHTML='<div class="loading-msg">Loading money records…</div>';
-  sbCall('getMoneyRecords').then(function(res){
-    if(!res.success){el.innerHTML='<div class="loading-msg">Error.</div>';return;}
-    var rows=res.data||[];
+
+  var now=new Date();
+  var thisMK=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  var monthStart=thisMK+'-01T00:00:00';
+
+  // Fetch both manual money_records AND live confirmed orders in parallel
+  Promise.all([
+    sbCall('getMoneyRecords'),
+    sb().from('orders').select('id,total,buyer_type,created_at,order_items(product_name,qty,unit_price)')
+      .eq('project_id',PROJECT_ID).eq('status','confirmed')
+      .gte('created_at',monthStart)
+      .order('created_at',{ascending:false}),
+  ]).then(function(results){
+    var manualRes = results[0];
+    var liveOrders = results[1].data||[];
+
+    if(!manualRes.success){el.innerHTML='<div class="loading-msg">Error loading records.</div>';return;}
+    var rows=manualRes.data||[];
+
+    // Manual totals
     var totIn=0,totCost=0,totProfit=0,totSpoil=0,thisMonth=0,lastMonth=0;
-    var now=new Date();
-    var thisMK=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
     var lastMD=new Date(now.getFullYear(),now.getMonth()-1,1);
     var lastMK=lastMD.getFullYear()+'-'+String(lastMD.getMonth()+1).padStart(2,'0');
     rows.forEach(function(r){
@@ -422,37 +437,93 @@ function loadMoney(){
       if(r.month===lastMK) lastMonth+=amt;
     });
     var chgPct=lastMonth>0?Math.round(((thisMonth-lastMonth)/lastMonth)*100):0;
-    var chgSign=chgPct>0?'+':''; var spoilPct=totIn>0?Math.round((totSpoil/totIn)*100):0;
+    var chgSign=chgPct>0?'+':'';
+    var spoilPct=totIn>0?Math.round((totSpoil/totIn)*100):0;
+
+    // Live totals from confirmed orders this month
+    var liveRev=liveOrders.reduce(function(s,o){return s+(parseFloat(o.total)||0);},0);
+    var liveCount=liveOrders.length;
+    // Breakdown by buyer type
+    var liveCon=0,liveRet=0,liveWho=0,liveDis=0;
+    liveOrders.forEach(function(o){
+      var t=parseFloat(o.total)||0;
+      if(o.buyer_type==='consumer')    liveCon+=t;
+      if(o.buyer_type==='retail')      liveRet+=t;
+      if(o.buyer_type==='wholesale')   liveWho+=t;
+      if(o.buyer_type==='distributor') liveDis+=t;
+    });
+
+    // Summary strip — shows both manual profit and live revenue
     sum.innerHTML=
       '<div class="money-totals-strip">'+
         '<div class="mts-item"><div class="mts-label">TOTAL PROFIT</div>'+
-          '<div class="mts-val '+(totProfit>=0?'profit-pos':'profit-neg')+'">₦'+fmt(totProfit)+'</div></div>'+
-        '<div class="mts-item"><div class="mts-label">THIS MONTH</div>'+
-          '<div class="mts-val">₦'+fmt(thisMonth)+'</div>'+
-          (chgPct!==0?'<div class="mts-change '+(chgPct>0?'pos':'neg')+'">'+chgSign+chgPct+'% vs last month</div>':'')+
-        '</div>'+
+          '<div class="mts-val '+(totProfit>=0?'profit-pos':'profit-neg')+'">₦'+fmt(totProfit)+'</div>'+
+          '<div class="mts-source">from manual records</div></div>'+
+        '<div class="mts-item"><div class="mts-label">THIS MONTH (LIVE)</div>'+
+          '<div class="mts-val">₦'+fmtK(liveRev)+'</div>'+
+          '<div class="mts-source">'+liveCount+' confirmed order'+(liveCount!==1?'s':'')+
+            (chgPct!==0?' · <span class="mts-change '+(chgPct>0?'pos':'neg')+'">'+chgSign+chgPct+'% vs last month</span>':'')+
+          '</div></div>'+
         '<div class="mts-item"><div class="mts-label">LOST TO WASTE</div>'+
           '<div class="mts-val profit-neg">₦'+fmt(totSpoil)+'</div>'+
-          (spoilPct>0?'<div class="mts-change neg">'+spoilPct+'% of revenue</div>':'')+
+          (spoilPct>0?'<div class="mts-source">'+spoilPct+'% of manual revenue</div>':'')+
         '</div>'+
-      '</div>';
+      '</div>'+
+      // Live buyer type breakdown
+      (liveRev>0?
+        '<div class="money-live-strip">'+
+          '<div class="mls-label">This month\'s live sales by buyer type</div>'+
+          '<div class="mls-row">'+
+            (liveCon>0?'<span class="mls-item con">Consumer ₦'+fmtK(liveCon)+'</span>':'')+
+            (liveRet>0?'<span class="mls-item ret">Retail ₦'+fmtK(liveRet)+'</span>':'')+
+            (liveWho>0?'<span class="mls-item who">Wholesale ₦'+fmtK(liveWho)+'</span>':'')+
+            (liveDis>0?'<span class="mls-item dis">Distributor ₦'+fmtK(liveDis)+'</span>':'')+
+          '</div>'+
+        '</div>'
+      :'');
+
     if(!rows.length){
-      el.innerHTML='<div class="empty-msg">No records yet. Use the + button to add your first month.</div>';
+      el.innerHTML=
+        '<div class="money-live-banner">'+
+          '<div class="mlb-title">'+
+            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'+
+            ' Live orders are tracked automatically'+
+          '</div>'+
+          '<div class="mlb-sub">Add a manual money record to capture your production cost, spoilage, and profit margin per item.</div>'+
+        '</div>'+
+        (liveOrders.length?renderLiveOrdersList(liveOrders):'<div class="empty-msg">No confirmed orders this month yet.</div>');
       return;
     }
+
     var recentRows=rows.slice().reverse().slice(0,5);
     el.innerHTML=
-      '<div class="money-activity-header"><div class="money-activity-title">Recent Activity</div>'+
-        '<button class="btn-main sm" onclick="toggleMoneyTable()">☰ See All Records</button>'+
+      // Live orders this month (auto, always shown)
+      (liveOrders.length?
+        '<div class="money-section-head">'+
+          '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'+
+          ' Live — This Month\'s Confirmed Orders'+
+        '</div>'+
+        renderLiveOrdersList(liveOrders.slice(0,5)):'') +
+      // Manual records
+      '<div class="money-activity-header"><div class="money-activity-title">'+
+        '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'+
+        ' Manual Profit Records'+
+      '</div>'+
+        '<button class="btn-ghost sm" onclick="toggleMoneyTable()">☰ Full Table</button>'+
       '</div>'+
       '<div class="money-activity-list">'+
         recentRows.map(function(r){
           var profit=parseFloat(r.final_profit)||0;
           var isProfit=profit>=0;
           return '<div class="mac-row">'+
-            '<div class="mac-icon">'+(isProfit?'💰':'📉')+'</div>'+
+            '<div class="mac-avatar '+(isProfit?'mac-av-profit':'mac-av-loss')+'">'+
+              '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+
+                (isProfit?'<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>':
+                          '<polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/>')+
+              '</svg>'+
+            '</div>'+
             '<div class="mac-info"><div class="mac-name">'+esc(r.product_name||'')+'</div><div class="mac-meta">'+esc(r.month||'')+'</div></div>'+
-            '<div class="mac-right"><div class="mac-val '+(isProfit?'profit-pos':'profit-neg')+'">'+(isProfit?'+':'−')+'₦'+fmt(Math.abs(profit))+'</div><div class="mac-tag">'+(isProfit?'PROFIT':'LOSS')+'</div></div>'+
+            '<div class="mac-right"><div class="mac-val '+(isProfit?'profit-pos':'profit-neg')+'">'+(isProfit?'+':'−')+'₦'+fmt(Math.abs(profit))+'</div><div class="mac-tag '+(isProfit?'':'mac-tag-loss')+'">'+(isProfit?'PROFIT':'LOSS')+'</div></div>'+
           '</div>';
         }).join('')+
       '</div>'+
@@ -461,10 +532,33 @@ function loadMoney(){
           ['Month','Item','Packs Sold','Money In','Total Cost','Gross Earnings','Lost to Waste','Final Profit'])+
       '</div>'+
       '<div class="master-insight-panel">'+
-        '<div class="mip-head"><span class="mip-icon">⚙</span><span class="mip-label">MASTER INSIGHT</span></div>'+
+        '<div class="mip-head">'+
+          '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'+
+          '<span class="mip-label">MASTER INSIGHT</span>'+
+        '</div>'+
         '<div class="mip-text">"'+buildInsight(rows,chgPct,totSpoil,totIn)+'"</div>'+
       '</div>';
   });
+}
+
+function renderLiveOrdersList(orders){
+  return '<div class="live-orders-list">'+
+    orders.map(function(o){
+      var dt=o.created_at?new Date(o.created_at).toLocaleDateString('en-NG'):'';
+      var typeLabel={consumer:'Consumer',retail:'Retail',wholesale:'Wholesale',distributor:'Distributor'}[o.buyer_type]||o.buyer_type||'';
+      var items=(o.order_items||[]).map(function(i){return i.product_name;}).join(', ');
+      return '<div class="live-order-row">'+
+        '<div class="lo-avatar">'+
+          '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>'+
+        '</div>'+
+        '<div class="lo-info">'+
+          '<div class="lo-name">'+esc(o.buyer_name||'')+'</div>'+
+          '<div class="lo-meta">'+typeLabel+(items?' · '+esc(items.slice(0,40)):'')+' · '+dt+'</div>'+
+        '</div>'+
+        '<div class="lo-amt">₦'+fmtK(o.total)+'</div>'+
+      '</div>';
+    }).join('')+
+  '</div>';
 }
 
 function buildInsight(rows,chgPct,totSpoil,totIn){
@@ -522,8 +616,18 @@ function submitMoneyRecord(){
   };
   if(!payload.month||!payload.product_name||!payload.packs_sold){toast('Month, item and packs sold are required','bad');return;}
   sbCall('addMoneyRecord',payload).then(function(res){
-    if(res.success){closeModal('modal-money');toast('Saved! Profit: ₦'+fmt(res.final_profit),'good');loadMoney();loadToday();}
-    else toast('Error: '+(res.error||''),'bad');
+    if(res.success){
+      closeModal('modal-money');
+      var msg = 'Saved! Your profit: ₦'+fmt(res.final_profit);
+      if(res.live_revenue && res.live_revenue>0){
+        msg += ' · Live orders this month: ₦'+fmtK(res.live_revenue);
+      }
+      toast(msg,'good');
+      loadMoney();
+      loadToday();
+    } else {
+      toast('Error: '+(res.error||''),'bad');
+    }
   });
 }
 
