@@ -306,9 +306,14 @@ function switchPeopleTab(tab,btn){
 }
 
 function stageLabel(stage){
-  var map={still_talking:'STILL TALKING',ready_to_buy:'READY TO BUY',not_interested:'NOT INTERESTED',
+  var map={
+    still_talking:  'STILL TALKING',
+    ready_to_buy:   'READY TO BUY',
+    not_interested: 'NOT INTERESTED',
+    order_placed:   'DEAL CONFIRMED',
     just_asked:'STILL TALKING',talking:'STILL TALKING',active:'READY TO BUY',
-    applied:'STILL TALKING',vetting:'STILL TALKING',signed:'READY TO BUY'};
+    applied:'STILL TALKING',vetting:'STILL TALKING',signed:'READY TO BUY'
+  };
   return map[stage]||stage||'STILL TALKING';
 }
 
@@ -352,72 +357,332 @@ function submitPayment(){
   });
 }
 
-// ── MY CUSTOMERS ──────────────────────────────────────────────────────────────
+// ── MY CLIENTS ────────────────────────────────────────────────────────────────
 
-function loadCustomers(tab){
+var APP_CLIENTS_TAB     = 'consumers';
+var APP_CLIENTS_RANKING = 'month';
+
+function switchClientsTab(tab, btn) {
+  APP_CLIENTS_TAB = tab;
+  document.querySelectorAll('#clients-tab-strip .tab').forEach(function(t){ t.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  // Ranking strip only for consumers
+  var rs = document.getElementById('clients-rank-strip');
+  if(rs) rs.style.display = tab==='consumers' ? '' : 'none';
+  loadClients();
+}
+
+function setClientsRanking(period, btn) {
+  APP_CLIENTS_RANKING = period;
+  document.querySelectorAll('.clients-rank-btn').forEach(function(b){ b.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  loadClients();
+}
+
+function clearClientsDateFilter() {
+  var f = document.getElementById('clients-from');
+  var t = document.getElementById('clients-to');
+  if(f) f.value = '';
+  if(t) t.value = '';
+  loadClients();
+}
+
+function loadClients(tab) {
+  if(tab) APP_CLIENTS_TAB = tab;
   renderRefreshBar('customers');
-  tab = tab || APP._custTab || 'all';
-  APP._custTab = tab;
-  var el=document.getElementById('customers-body');
-  el.innerHTML='<div class="loading-msg">Loading customers…</div>';
+  var el = document.getElementById('customers-body');
+  if(!el) return;
+  el.innerHTML = '<div class="loading-msg">Loading…</div>';
 
-  // Tab strip
-  var tabHtml = '<div class="tab-strip cust-tab-strip">'+
-    ['all','consumer','retail','wholesale','distributor'].map(function(t){
-      var labels={all:'Everyone',consumer:'Consumers',retail:'Retail Shops',wholesale:'Wholesalers',distributor:'Distributors'};
-      return '<button class="tab'+(tab===t?' active':'')+'" onclick="loadCustomers(\''+t+'\')">'+labels[t]+'</button>';
-    }).join('')+
-  '</div>';
+  var fromVal = (document.getElementById('clients-from')||{}).value || '';
+  var toVal   = (document.getElementById('clients-to')||{}).value   || '';
+  var fromISO = fromVal ? fromVal+'T00:00:00' : null;
+  var toISO   = toVal   ? toVal+'T23:59:59'   : null;
 
-  sbCall('getCustomers').then(function(res){
-    if(!res.success){el.innerHTML=tabHtml+'<div class="loading-msg">Error.</div>';return;}
-    var all=(res.data||[]);
-    // Filter by buyer_type if not 'all'
-    var customers = tab==='all' ? all : all.filter(function(c){ return (c.buyer_type||'consumer')===tab; });
-    customers.sort(function(a,b){return (parseFloat(b.total_spent)||0)-(parseFloat(a.total_spent)||0);});
+  if (APP_CLIENTS_TAB === 'consumers') {
+    _loadConsumersTab(el, fromISO, toISO);
+  } else if (APP_CLIENTS_TAB === 'b2b') {
+    _loadB2BTab(el, fromISO, toISO);
+  } else {
+    var typeMap = {retail:'retail', wholesale:'wholesale', distributors:'distributor'};
+    _loadCRMTab(el, typeMap[APP_CLIENTS_TAB] || 'retail', fromISO, toISO);
+  }
+}
 
-    if(!customers.length){
-      el.innerHTML=tabHtml+'<div class="empty-msg">No '+tab+' customers yet.</div>';
+// ── CONSUMERS TAB ─────────────────────────────────────────────────────────────
+function _loadConsumersTab(el, fromISO, toISO) {
+  // Ranking period boundaries
+  var now = new Date();
+  var periodStart = null;
+  if (APP_CLIENTS_RANKING === 'week') {
+    var wk = new Date(now); wk.setDate(wk.getDate() - 7);
+    periodStart = wk.toISOString();
+  } else if (APP_CLIENTS_RANKING === 'month') {
+    periodStart = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-01T00:00:00';
+  } else if (APP_CLIENTS_RANKING === 'year') {
+    periodStart = now.getFullYear()+'-01-01T00:00:00';
+  }
+
+  var query = sb().from('orders')
+    .select('buyer_name,phone,state,lga,total,created_at,order_items(product_name,qty)')
+    .eq('project_id', PROJECT_ID)
+    .eq('status', 'confirmed')
+    .eq('buyer_type', 'consumer');
+
+  if (fromISO)     query = query.gte('created_at', fromISO);
+  else if (periodStart) query = query.gte('created_at', periodStart);
+  if (toISO)       query = query.lte('created_at', toISO);
+
+  query.order('created_at', {ascending:false}).then(function(r) {
+    if (r.error) { el.innerHTML='<div class="loading-msg">Error loading consumers.</div>'; return; }
+    var rows = r.data||[];
+
+    // Aggregate by buyer_name + phone
+    var map = {};
+    rows.forEach(function(o) {
+      var key = (o.phone||o.buyer_name||'unknown').replace(/\s/g,'');
+      if (!map[key]) map[key] = {
+        name: o.buyer_name||'', phone: o.phone||'',
+        state: o.state||'', lga: o.lga||'',
+        total_spent: 0, total_orders: 0, last_order: o.created_at,
+        products: {}
+      };
+      map[key].total_spent  += parseFloat(o.total)||0;
+      map[key].total_orders += 1;
+      if (o.created_at > map[key].last_order) map[key].last_order = o.created_at;
+      (o.order_items||[]).forEach(function(i){
+        map[key].products[i.product_name] = (map[key].products[i.product_name]||0)+(parseInt(i.qty)||1);
+      });
+    });
+
+    var clients = Object.values(map).sort(function(a,b){ return b.total_spent - a.total_spent; });
+    if (!clients.length) { el.innerHTML='<div class="empty-msg">No consumer orders in this period.</div>'; return; }
+
+    var html = '<div class="card-list">';
+    clients.forEach(function(c, i) {
+      var rank = i+1;
+      var cleanPhone = String(c.phone).replace(/\D/g,'');
+      if(cleanPhone.startsWith('0')) cleanPhone='234'+cleanPhone.slice(1);
+      var daysSince = c.last_order ? Math.floor((Date.now()-new Date(c.last_order))/(86400000)) : '—';
+      var topProducts = Object.entries(c.products).sort(function(a,b){return b[1]-a[1];}).slice(0,2).map(function(e){return e[0];}).join(', ');
+      var rankClass = rank===1?'rank-gold':rank===2?'rank-silver':rank===3?'rank-bronze':'';
+
+      // Suggested discount (loyalty nudge)
+      var discountNudge = '';
+      if(c.total_orders >= (APP.thresholds.loyal_orders||5)){
+        discountNudge = '<div class="client-discount-nudge">'+
+          '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>'+
+          'Loyal — suggest discount</div>';
+      } else if(daysSince !== '—' && daysSince > (APP.thresholds.dormant_days||30)){
+        discountNudge = '<div class="client-discount-nudge client-discount-atrisk">'+
+          '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'+
+          'At risk — win back offer</div>';
+      }
+
+      html += '<div class="client-card" id="client-c-'+esc(c.phone||c.name)+'">';
+      html += '<div class="client-card-head">';
+      html += '<div class="client-rank '+rankClass+'">'+rank+'</div>';
+      html += '<div class="client-info">';
+      html += '<div class="client-name">'+esc(c.name)+'</div>';
+      html += '<div class="client-meta">';
+      if(c.state) html += '<span>'+esc(c.state)+'</span>';
+      html += '<span>'+c.total_orders+' order'+(c.total_orders!==1?'s':'')+'</span>';
+      html += '<span>Last: '+daysSince+' days ago</span>';
+      html += '</div>';
+      if(topProducts) html += '<div class="client-products">'+esc(topProducts)+'</div>';
+      html += discountNudge;
+      html += '</div>';
+      html += '<div class="client-right">';
+      html += '<div class="client-spent">'+fmtK(c.total_spent)+'</div>';
+      if(cleanPhone){
+        html += '<button class="btn-wa-order" onclick="openCustomMsgModal(\'retention_quiet\',\''+esc(c.name)+'\',\'\',\''+esc(c.phone)+'\',\'\')">'+
+          '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>'+
+          'Message</button>';
+      }
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  }).catch(function(){ el.innerHTML='<div class="loading-msg">Connection issue.</div>'; });
+}
+
+// ── CRM TAB (Retail / Wholesale / Distributors) — confirmed deals only ────────
+function _loadCRMTab(el, clientType, fromISO, toISO) {
+  var query = sb().from('clients')
+    .select('*')
+    .eq('project_id', PROJECT_ID)
+    .eq('client_type', clientType)
+    .eq('where_we_are', 'order_placed'); // Only confirmed/finalized deals
+
+  if (fromISO) query = query.gte('created_at', fromISO);
+  if (toISO)   query = query.lte('created_at', toISO);
+
+  query.order('created_at', {ascending:false}).then(function(r) {
+    if (r.error) { el.innerHTML='<div class="loading-msg">Error.</div>'; return; }
+    var clients = r.data||[];
+
+    var typeNames = {retail:'retail',wholesale:'wholesale',distributor:'distributor'};
+    var typeName  = typeNames[clientType]||clientType;
+
+    if (!clients.length) {
+      el.innerHTML=
+        '<div class="empty-msg" style="padding:20px 0">'+
+        'No confirmed '+typeName+' deals yet.<br>'+
+        '<span style="font-size:0.72rem;color:var(--text3)">Mark a B2B deal as "Deal Confirmed" to see it here.</span>'+
+        '</div>';
       return;
     }
-    var html=tabHtml+'<div class="customers-subtitle">Ranked by lifetime spend · live state &amp; tier</div><div class="card-list">';
-    customers.forEach(function(c,i){
-      var rank=i+1, isTop=rank<=3;
-      var cleanPhone=String(c.phone||'').replace(/\D/g,'');
+
+    var html = '<div class="card-list">';
+    clients.forEach(function(c, i) {
+      var name = c.contact_name||c.shop_name||'';
+      var cleanPhone = String(c.phone||'').replace(/\D/g,'');
       if(cleanPhone.startsWith('0')) cleanPhone='234'+cleanPhone.slice(1);
-      var cs = getCustomerState(c);
-      var badges = stateTag(cs.state) + tierTag(cs.tier);
-      // WhatsApp CTA
-      var waMsg = 'Hello '+esc(c.name||c.buyer_name||'')+'! 👋 Thank you for being a valued OA Drinks & Snacks customer. We have fresh stock ready for you. Would you like to place an order?';
-      var waBtn = cleanPhone ? '<a class="btn-wa-cta" href="https://wa.me/'+cleanPhone+'?text='+encodeURIComponent(waMsg)+'" target="_blank">'+
-        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>Message</a>' : '';
-      if(isTop){
-        var rankColors=['var(--accent)','#6b7280','#d97706'];
-        html+='<div class="cust-card-top">';
-        html+='<div class="cust-top-head"><div class="cust-rank-badge" style="background:'+rankColors[i]+'">'+rank+'</div>';
-        html+='<div class="cust-top-info"><div class="cust-name">'+esc(c.name||c.buyer_name||'')+'</div>';
-        html+='<div class="cust-badges">'+badges+'</div>';
-        html+='<div class="cust-meta">'+esc(c.state||'')+(c.lga?', '+esc(c.lga):'')+'</div></div>';
-        html+=waBtn;
-        html+='</div>';
-        html+='<div class="cust-top-stats"><div class="cust-stat"><div class="cust-stat-label">TOTAL SPENT</div><div class="cust-stat-val accent">₦'+fmt(c.total_spent)+'</div></div>';
-        html+='<div class="cust-stat"><div class="cust-stat-label">ORDERS</div><div class="cust-stat-val">'+esc(String(c.total_orders||0))+'</div></div>';
-        html+='<div class="cust-stat"><div class="cust-stat-label">LAST ORDER</div><div class="cust-stat-val">'+cs.days+' days ago</div></div></div>';
-        if(c.phone) html+='<div class="cust-phone"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.11 12 19.79 19.79 0 0 1 1.09 3.4 2 2 0 0 1 3.05 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg> '+esc(c.phone||'')+'</div>';
-        html+='</div>';
-      } else {
-        html+='<div class="cust-card-compact">';
-        html+='<div class="cust-rank-num">'+rank+'</div>';
-        html+='<div class="cust-compact-info"><div class="cust-name">'+esc(c.name||c.buyer_name||'')+'</div>';
-        html+='<div class="cust-badges-sm">'+badges+'</div>';
-        html+='<div class="cust-meta">'+esc(c.state||'')+'</div></div>';
-        html+='<div class="cust-compact-right"><div class="cust-spent-compact">'+fmtK(c.total_spent)+'</div><div class="cust-orders-compact">'+esc(String(c.total_orders||0))+' orders</div>'+waBtn+'</div>';
-        html+='</div>';
+      var owes = parseFloat(c.balance_owed)||0;
+      var confirmedAt = c.updated_at||c.created_at;
+      var confirmedDisplay = confirmedAt ? fmtDateTime(confirmedAt) : '';
+      var rank = i+1;
+      var rankClass = rank===1?'rank-gold':rank===2?'rank-silver':rank===3?'rank-bronze':'';
+
+      html += '<div class="client-card" id="client-crm-'+esc(c.id)+'">';
+      html += '<div class="client-card-head">';
+      html += '<div class="client-rank '+rankClass+'">'+rank+'</div>';
+      html += '<div class="client-info">';
+      html += '<div class="client-name">'+esc(name)+'</div>';
+      if(c.shop_name && c.contact_name) html += '<div class="client-biz">'+esc(c.shop_name)+'</div>';
+      html += '<div class="client-meta">';
+      if(c.state) html += '<span>'+esc(c.state+(c.lga?', '+c.lga:''))+'</span>';
+      if(c.phone) html += '<span>'+esc(c.phone)+'</span>';
+      html += '</div>';
+      html += '<div class="client-meta">';
+      html += '<span class="people-stage-badge stage-order-placed">DEAL CONFIRMED ✓</span>';
+      if(confirmedDisplay) html += '<span style="font-size:0.64rem;color:var(--text3)">'+confirmedDisplay+'</span>';
+      html += '</div>';
+      if(c.interest) html += '<div class="client-products">'+esc(c.interest)+'</div>';
+      if(owes>0) html += '<div class="client-owes">Balance: '+fmtK(owes)+'</div>';
+      html += '</div>';
+      html += '<div class="client-right">';
+      if(cleanPhone){
+        var tplKey = clientType==='distributor' ? 'promo_general' : 'followup_enquiry';
+        html += '<button class="btn-wa-order" onclick="openCustomMsgModal(\''+tplKey+'\',\''+esc(name)+'\',\'\',\''+esc(c.phone||'')+'\',\'\')">'+
+          '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>'+
+          'Message</button>';
       }
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
     });
-    html+='</div>';
-    el.innerHTML=html;
-  }).catch(function(){el.innerHTML=tabHtml+'<div class="loading-msg">Connection issue.</div>';});
+    html += '</div>';
+    el.innerHTML = html;
+  }).catch(function(){ el.innerHTML='<div class="loading-msg">Connection issue.</div>'; });
+}
+
+// ── B2B TAB — full pipeline (retail + wholesale + distributor, active stages only) ──
+function _loadB2BTab(el, fromISO, toISO) {
+  var query = sb().from('clients')
+    .select('*')
+    .eq('project_id', PROJECT_ID)
+    .neq('where_we_are', 'not_interested');
+  // B2B shows all active stages including order_placed for visibility
+  // Admin marks order_placed here first, then it appears in the tab
+
+  if (fromISO) query = query.gte('created_at', fromISO);
+  if (toISO)   query = query.lte('created_at', toISO);
+
+  query.order('created_at', {ascending:false}).then(function(r) {
+    if (r.error) { el.innerHTML='<div class="loading-msg">Error.</div>'; return; }
+    var clients = r.data||[];
+    if (!clients.length) { el.innerHTML='<div class="empty-msg">No B2B enquiries yet.</div>'; return; }
+
+    var typeLabels = {retail:'Small Shop',wholesale:'Wholesaler',distributor:'Distributor'};
+    var typeColors = {retail:'var(--accent)',wholesale:'#2563eb',distributor:'#7c3aed'};
+
+    // Group by stage for visual clarity
+    var pipeline = clients.filter(function(c){ return c.where_we_are !== 'order_placed'; });
+    var confirmed = clients.filter(function(c){ return c.where_we_are === 'order_placed'; });
+
+    var html = '';
+
+    // Pipeline section
+    if (pipeline.length) {
+      html += '<div class="cb-section-head">Active Pipeline ('+pipeline.length+')</div>';
+      html += '<div class="card-list">';
+      pipeline.forEach(function(c) {
+        html += _b2bCard(c, typeLabels, typeColors);
+      });
+      html += '</div>';
+    }
+
+    // Confirmed deals section
+    if (confirmed.length) {
+      html += '<div class="cb-section-head" style="margin-top:14px">Deal Confirmed ('+confirmed.length+') ✓</div>';
+      html += '<div class="card-list">';
+      confirmed.forEach(function(c) {
+        html += _b2bCard(c, typeLabels, typeColors);
+      });
+      html += '</div>';
+    }
+
+    el.innerHTML = html;
+
+    // Clear B2B dot once viewed
+    var dot  = document.getElementById('dot-b2b');
+    var sdot = document.getElementById('dot-clients');
+    if(dot)  dot.className  = 'sb-dot';
+    if(sdot) sdot.className = 'sb-dot';
+  }).catch(function(){ el.innerHTML='<div class="loading-msg">Connection issue.</div>'; });
+}
+
+function _b2bCard(c, typeLabels, typeColors) {
+  var name = c.contact_name||c.shop_name||'';
+  var cleanPhone = String(c.phone||'').replace(/\D/g,'');
+  if(cleanPhone.startsWith('0')) cleanPhone='234'+cleanPhone.slice(1);
+  var stage    = c.where_we_are||'still_talking';
+  var stageCls = 'stage-'+stage.replace(/_/g,'-');
+  var typeLbl  = typeLabels[c.client_type]||c.client_type||'';
+  var typeCol  = typeColors[c.client_type]||'var(--accent)';
+  var createdAt = c.created_at ? fmtDateTime(c.created_at) : '';
+  var owes = parseFloat(c.balance_owed)||0;
+  var isConfirmed = stage === 'order_placed';
+
+  var html = '<div class="client-card client-b2b'+(isConfirmed?' client-b2b-done':'')+'" id="client-b2b-'+esc(c.id)+'">';
+  html += '<div class="client-card-head">';
+  html += '<div class="client-avatar" style="background:'+typeCol+'">'+esc(initials(name)||'?')+'</div>';
+  html += '<div class="client-info">';
+  html += '<div class="client-name">'+esc(name)+'</div>';
+  if(c.shop_name && c.contact_name) html += '<div class="client-biz">'+esc(c.shop_name)+'</div>';
+  html += '<div class="client-meta">';
+  html += '<span class="client-type-chip" style="background:'+typeCol+'20;color:'+typeCol+'">'+typeLbl+'</span>';
+  if(c.state) html += '<span>'+esc(c.state)+'</span>';
+  html += '</div>';
+  html += '<div class="client-meta">';
+  html += '<span class="people-stage-badge '+stageCls+'">'+stageLabel(stage)+'</span>';
+  if(createdAt) html += '<span style="font-size:0.64rem;color:var(--text3)">'+createdAt+'</span>';
+  html += '</div>';
+  if(c.interest) html += '<div class="client-products">'+esc(c.interest)+'</div>';
+  if(owes>0) html += '<div class="client-owes">Balance: '+fmtK(owes)+'</div>';
+  if(c.remind_me_on && !isConfirmed) html += '<div class="pcard-followup" style="margin-top:4px"><span>🔔 '+esc(c.remind_me_on)+'</span></div>';
+  html += '</div>';
+  html += '<div class="client-right" style="gap:6px">';
+  // Edit stage button — lets admin mark as confirmed
+  html += '<button class="btn-ghost sm" onclick="openPeopleModal(\''+esc(c.id)+'\',\''+esc(c.client_type)+'\',\''+esc(stage)+'\')" style="font-size:0.65rem;padding:4px 7px">Edit</button>';
+  if(cleanPhone){
+    html += '<button class="btn-wa-order" onclick="openCustomMsgModal(\'followup_enquiry\',\''+esc(name)+'\',\'\',\''+esc(c.phone||'')+'\',\'\')">'+
+      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg>'+
+      'Message</button>';
+  }
+  html += '</div>';
+  html += '</div>';
+  html += '</div>';
+  return html;
+}
+
+// Keep old loadCustomers as alias — called from boot preload
+function loadCustomers(tab) {
+  if(tab) APP_CLIENTS_TAB = tab;
+  loadClients();
 }
 
 function fmtK(v){ var n=parseFloat(v)||0; if(n>=1000000) return '₦'+(n/1000000).toFixed(1)+'M'; if(n>=1000) return '₦'+(n/1000).toFixed(0)+'k'; return '₦'+(n).toLocaleString('en-NG'); }

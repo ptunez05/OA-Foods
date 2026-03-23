@@ -52,14 +52,13 @@ function sendToSupabase(payload) {
         'Content-Type':  'application/json',
         'apikey':         SUPABASE_ANON_KEY,
         'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-        'Prefer':        'return=minimal'   // anon INSERT: minimal avoids 401 on SELECT-back
+        'Prefer':        'return=minimal'
     };
 
-    // Generate order UUID client-side — avoids needing a SELECT-back after insert
-    // (public role has INSERT but no SELECT on orders)
-    var orderId = generateUUID();
+    var orderId = payload.orderId || generateUUID();
+    payload.orderId = orderId; // ensure consistent ID across both calls
 
-    // Step 1 — insert the order row
+    // Step 1 — insert order as 'paused' (customer filled form, not yet sent WhatsApp)
     fetch(SUPABASE_URL + '/rest/v1/orders', {
         method:  'POST',
         headers: headers,
@@ -75,7 +74,7 @@ function sendToSupabase(payload) {
             address:      payload.address,
             landmark:     payload.landmark || null,
             buyer_type:   'consumer',
-            status:       'pending',
+            status:       payload.status || 'paused',
             total:        payload.total,
         })
     })
@@ -85,7 +84,7 @@ function sendToSupabase(payload) {
             return;
         }
 
-        // Step 2 — insert order_items using the same orderId
+        // Step 2 — insert order_items
         var items = [];
         try { items = JSON.parse(payload.items || '[]'); } catch(e) {}
         if (!items.length) return;
@@ -108,7 +107,7 @@ function sendToSupabase(payload) {
             if (!r2.ok) r2.text().then(function(t){ console.error('OA order_items insert failed:', r2.status, t); });
         }).catch(function(e) { console.error('OA order_items fetch error:', e); });
 
-        // Step 3 — log to clients table if heard_from provided
+        // Step 3 — log referral to clients if provided
         if (payload.heard_from) {
             fetch(SUPABASE_URL + '/rest/v1/clients', {
                 method:  'POST',
@@ -127,6 +126,22 @@ function sendToSupabase(payload) {
         }
     })
     .catch(function(e) { console.error('OA order fetch error:', e); });
+}
+
+// Called when customer actually taps "Confirm Order in WhatsApp"
+// Upgrades the paused order to pending so admin sees it in Waiting tab
+function upgradeOrderToPending(orderId) {
+    if (!orderId) return;
+    fetch(SUPABASE_URL + '/rest/v1/orders?id=eq.' + orderId + '&project_id=eq.' + PROJECT_ID + '&status=eq.paused', {
+        method:  'PATCH',
+        headers: {
+            'Content-Type':  'application/json',
+            'apikey':         SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+            'Prefer':        'return=minimal'
+        },
+        body: JSON.stringify({ status: 'pending' })
+    }).catch(function(e) { console.error('OA upgrade to pending failed:', e); });
 }
 
 // ── CART STATE ────────────────────────────────────────────────────────────────
@@ -347,8 +362,12 @@ function processWhatsAppOrder() {
     }
     msg += `\nTotal Amount: N${total.toLocaleString()}\n\nPlease confirm my delivery details and product availability. Thank you!`;
 
-    // Save order to Supabase — uses offline queue if network is down
+    // Generate order UUID now so we can track it across both stages
+    var currentOrderId = generateUUID();
+
+    // Stage 1: Save as 'paused' immediately — visible in admin as paused, not yet waiting
     oaSend({
+        orderId:    currentOrderId,
         tracking:   trackingID,
         name:       name,
         phone:      phone,
@@ -361,11 +380,19 @@ function processWhatsAppOrder() {
         subtotal:   subtotal,
         total:      total,
         heard_from: referral,
+        status:     'paused',
     });
 
+    // Stage 2: When customer taps WhatsApp button, upgrade to 'pending'
     const waURL  = `https://wa.me/2348140226282?text=${encodeURIComponent(msg)}`;
     const ctaBtn = document.getElementById('whatsapp-cta-btn');
-    if (ctaBtn) ctaBtn.href = waURL;
+    if (ctaBtn) {
+        ctaBtn.href = waURL;
+        // Attach one-time listener to upgrade status when WhatsApp is actually opened
+        ctaBtn.onclick = function() {
+            upgradeOrderToPending(currentOrderId);
+        };
+    }
 
     closeCheckoutModal();
     hideCartBar();

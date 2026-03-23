@@ -23,7 +23,7 @@ var OFFLINE_QUEUE_KEY = 'oa_sb_offline_queue';
 
 var APP = {
   role:'', name:'', userId:'', pulseData:null,
-  currentOrderTab:'pending', currentPeopleTab:'retail',
+  currentOrderTab:'paused', currentPeopleTab:'retail',
   currentStockTab:'levels', currentSettingsTab:'general',
   allProducts:[], openDrawer:'',
   // Phase 4 — auto-refresh
@@ -149,19 +149,26 @@ function bootApp() {
     if (s.high_value_min_spend) APP.thresholds.bigspend_amount= parseFloat(s.high_value_min_spend)||50000;
   });
 
-  // Today loads immediately (visible on boot)
-  loadToday();
-
-  // All other sections preload silently in background after a short delay
-  // so Today renders first without competing network requests
+  // All sections preload silently after boot — goto() loads the active page immediately,
+  // background preload keeps other sections ready for fast tab switching
   setTimeout(function() {
-    loadOrders('pending');
-    loadItems();
-    loadStock('levels');
-    loadPeople('retail');
-    loadCustomers();
-    if (APP.role === 'master') loadMoney();
+    var active = 'today';
+    try { active = localStorage.getItem('oa_active_page') || 'today'; } catch(e){}
+    if (active !== 'orders')    loadOrders('pending');
+    if (active !== 'items')     loadItems();
+    if (active !== 'stock')     loadStock('levels');
+    if (active !== 'people')    loadPeople('retail');
+    if (active !== 'customers') loadCustomers();
+    if (APP.role === 'master' && active !== 'money') loadMoney();
   }, 1800);
+
+  // Restore last active page — or default to today
+  var savedPage = 'today';
+  try { savedPage = localStorage.getItem('oa_active_page') || 'today'; } catch(e){}
+  // Master-only pages shouldn't restore for staff
+  var masterOnly = ['money','settings','history'];
+  if (masterOnly.indexOf(savedPage) !== -1 && APP.role !== 'master') savedPage = 'today';
+  goto(savedPage);
 
   setupSessionRefresh();
   startAutoRefresh();
@@ -183,10 +190,17 @@ function showLoginScreen() {
   if (pw) pw.value = '';
   var err = document.getElementById('login-err');
   if (err) err.classList.add('hidden');
+  // Always reset button to Sign In — prevents "Checking…" stuck state after logout
+  var btn = document.getElementById('login-btn');
+  var txt = document.getElementById('login-btn-text');
+  if (btn) btn.disabled = false;
+  if (txt) txt.textContent = 'Sign In';
   var sb2 = document.getElementById('sidebar');
   if (sb2) sb2.classList.remove('open');
   var mn = document.getElementById('bn-more-menu');
   if (mn) mn.classList.remove('open');
+  // Clear active page on explicit logout so next login starts fresh on Today
+  try { localStorage.removeItem('oa_active_page'); } catch(e){}
 }
 
 // Supabase handles token refresh automatically.
@@ -375,6 +389,11 @@ function toggleTheme() {
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('oa_theme', next);
   updateThemeBtn(next);
+  // Re-render Chart.js charts so colours update for new theme
+  if (APP.pulseData) {
+    renderMonthlyChart(APP.pulseData);
+    renderTopSellers(APP.pulseData);
+  }
 }
 function updateThemeBtn(theme) {
   var btn = document.getElementById('theme-btn');
@@ -390,15 +409,24 @@ function goto(name, el) {
   var page = document.getElementById('page-'+name);
   if (page) { page.classList.remove('hidden'); page.classList.add('active'); }
   if (el) el.classList.add('active');
+  // Also highlight matching sidebar link when called without el (e.g. from metric card tap)
+  if (!el) {
+    document.querySelectorAll('.sb-link').forEach(function(l){
+      var oc = l.getAttribute('onclick')||'';
+      if (oc.indexOf("'"+name+"'") !== -1) l.classList.add('active');
+    });
+  }
   var titles = {today:'Shop Today',orders:'Orders',items:'My Products',
     stock:'My Stock',people:'My Customers',customers:'My Customers',
-    money:'My Cash Book',settings:'Shop Settings',history:'Past Records',
+    money:'My Cash Book',settings:'Shop Settings',
     followups:'Reminders'};
   var tb = document.getElementById('tb-title');
   if (tb) tb.textContent = titles[name] || name;
   var sidebar = document.getElementById('sidebar');
   if (sidebar) sidebar.classList.remove('open');
   updateBottomNavForPage(name);
+  // Persist active page across browser refresh
+  try { localStorage.setItem('oa_active_page', name); } catch(e){}
   if (name==='today')     loadToday();
   if (name==='orders')    loadOrders('pending');
   if (name==='items')     loadItems();
@@ -561,6 +589,9 @@ function sbCall(action, params) {
   }
 
   // ── ORDERS ──
+  if (action === 'getPausedOrders') {
+    return getOrders('paused');
+  }
   if (action === 'getPendingOrders') {
     return getOrders('pending');
   }
@@ -1851,63 +1882,191 @@ function renderTargetBar(d){
   if(e4) e4.textContent='₦'+fmt(d.money_in_this_month)+' earned · ₦'+fmt(Math.max(0,(d.monthly_target||0)-(d.money_in_this_month||0)))+' to go';
 }
 
-function renderMonthlyChart(d){
-  var chart=d.monthly_chart||[], el=document.getElementById('bar-chart-months'); if(!el) return;
-  // Show last 6 months as summary cards with actual ₦ amounts
-  var months=chart.slice(-6);
-  if(!months.length){
-    el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px 0;text-align:center">No accepted orders yet — sales will appear here once you start accepting orders</div>';
-    return;
-  }
-  var monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var max=Math.max.apply(null,months.map(function(m){return m.revenue;}))||1;
-  el.innerHTML=months.map(function(m,i){
-    var prev=months[i-1];
-    var pct=prev&&prev.revenue>0?Math.round(((m.revenue-prev.revenue)/prev.revenue)*100):null;
-    var bar=Math.max(8,Math.round((m.revenue/max)*100));
-    var isCurrentMonth=(m.month===new Date().toISOString().slice(0,7));
-    var mo=m.month?parseInt(m.month.slice(5))-1:0;
-    var yr=m.month?m.month.slice(2,4):'';
-    var trend=pct===null?'':pct>0?
-      '<span class="mc-rev-up">▲'+pct+'%</span>':pct<0?
-      '<span class="mc-rev-down">▼'+Math.abs(pct)+'%</span>':
-      '<span class="mc-rev-flat">—</span>';
-    return '<div class="mc-rev-card'+(isCurrentMonth?' mc-rev-current':'')+'">'+ 
-      '<div class="mc-rev-month">'+monthNames[mo]+' \''+yr+'</div>'+
-      '<div class="mc-rev-amt">'+fmtK(m.revenue)+'</div>'+
-      '<div class="mc-rev-bar-wrap"><div class="mc-rev-bar" style="width:'+bar+'%"></div></div>'+
-      '<div class="mc-rev-trend">'+trend+'</div>'+
-    '</div>';
-  }).join('');
+// Chart.js instance registry — destroy before recreating to prevent memory leaks
+var _chartInstances = {};
+function _destroyChart(id) {
+  if (_chartInstances[id]) { try { _chartInstances[id].destroy(); } catch(e){} delete _chartInstances[id]; }
 }
 
-function setChartWindow(months,btn){
-  APP._chartWindow=months;
-  document.querySelectorAll('.chart-window-btn').forEach(function(b){b.classList.remove('active');});
-  if(btn) btn.classList.add('active');
-  renderMonthlyChart(APP.pulseData||{});
-}
+function _isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
+function _gridColor()  { return _isDark() ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'; }
+function _tickColor()  { return _isDark() ? '#9ca3af' : '#6b7280'; }
+function _labelColor() { return _isDark() ? '#e5e7eb' : '#111827'; }
 
-function renderTopSellers(d){
-  var el=document.getElementById('hbar-sellers'); if(!el) return;
-  var mode=APP._sellersMode||'today';
-  var sellers=mode==='today'?(d.top_sellers_today||[]):(d.top_sellers_all||[]);
-  if(!sellers.length){
-    el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px 0">'+(mode==='today'?'No sales confirmed today yet':'No sales data yet')+'</div>';
+function renderMonthlyChart(d) {
+  var canvas = document.getElementById('bar-chart-months');
+  if (!canvas) return;
+  var chart = d.monthly_chart || [];
+  var months = chart.slice(-6);
+
+  _destroyChart('monthly');
+
+  if (!months.length) {
+    var ctx0 = canvas.getContext('2d');
+    ctx0.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.parentElement.insertAdjacentHTML('afterend',
+      '<div id="chart-months-empty" style="color:var(--text3);font-size:12px;padding:16px 0;text-align:center">No accepted orders yet — sales will appear here once orders are accepted</div>');
     return;
   }
-  var max=sellers[0].qty||1;
-  // Show product name + qty only — clean, no revenue clutter
-  el.innerHTML=sellers.map(function(s){
-    var w=Math.round((s.qty/max)*100);
-    return '<div class="hbc-row">'+
-      '<div class="hbc-name-wrap">'+
-        '<div class="hbc-name">'+esc(s.name)+'</div>'+
-        '<div class="hbc-qty-badge">'+s.qty+' sold</div>'+
-      '</div>'+
-      '<div class="hbc-bar-wrap"><div class="hbc-bar" style="width:'+w+'%"><span class="hbc-pct">'+w+'%</span></div></div>'+
-    '</div>';
-  }).join('');
+  var empty = document.getElementById('chart-months-empty');
+  if (empty) empty.remove();
+
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var labels = months.map(function(m) {
+    var mo = m.month ? parseInt(m.month.slice(5)) - 1 : 0;
+    var yr = m.month ? "'" + m.month.slice(2,4) : '';
+    return monthNames[mo] + ' ' + yr;
+  });
+  var values = months.map(function(m) { return m.revenue || 0; });
+  var now = new Date().toISOString().slice(0,7);
+  var bgColors = months.map(function(m) {
+    return m.month === now ? '#c8000f' : (_isDark() ? 'rgba(200,0,15,0.45)' : 'rgba(200,0,15,0.22)');
+  });
+  var borderColors = months.map(function(m) {
+    return m.month === now ? '#c8000f' : 'rgba(200,0,15,0.6)';
+  });
+
+  var ctx = canvas.getContext('2d');
+  _chartInstances['monthly'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Revenue',
+        data: values,
+        backgroundColor: bgColors,
+        borderColor: borderColors,
+        borderWidth: 2,
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      aspectRatio: 2.2,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) { return ' ' + fmtK(ctx.parsed.y); }
+          },
+          backgroundColor: _isDark() ? '#1f2937' : '#111827',
+          titleColor: '#fff', bodyColor: '#e5e7eb',
+          padding: 10, cornerRadius: 8,
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: _tickColor(), font: { size: 11, weight: '700', family: 'Nunito' } },
+          border: { display: false }
+        },
+        y: {
+          grid: { color: _gridColor(), drawBorder: false },
+          ticks: {
+            color: _tickColor(), font: { size: 10, family: 'Nunito' },
+            callback: function(v) { return fmtK(v); },
+            maxTicksLimit: 5,
+          },
+          border: { display: false }
+        }
+      }
+    }
+  });
+}
+
+function setChartWindow(months, btn) {
+  APP._chartWindow = months;
+  document.querySelectorAll('.chart-window-btn').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  renderMonthlyChart(APP.pulseData || {});
+}
+
+function renderTopSellers(d) {
+  var mode = APP._sellersMode || 'today';
+  var sellers = mode === 'today' ? (d.top_sellers_today || []) : (d.top_sellers_all || []);
+  _drawSellersChart(sellers, mode === 'today' ? 'No sales accepted today yet' : 'No sales data yet');
+}
+
+function _drawSellersChart(sellers, emptyMsg) {
+  var canvas = document.getElementById('hbar-sellers');
+  if (!canvas) return;
+  _destroyChart('sellers');
+
+  if (!sellers.length) {
+    var ctx0 = canvas.getContext('2d');
+    ctx0.clearRect(0, 0, canvas.width, canvas.height);
+    var old = document.getElementById('hbar-sellers-empty');
+    if (old) old.remove();
+    canvas.insertAdjacentHTML('afterend',
+      '<div id="hbar-sellers-empty" style="color:var(--text3);font-size:12px;padding:16px 0;text-align:center">'+emptyMsg+'</div>');
+    return;
+  }
+  var old = document.getElementById('hbar-sellers-empty');
+  if (old) old.remove();
+
+  // Chart.js palette — zobo red gradient shades
+  var palette = [
+    '#c8000f','#e0191f','#a8000c','#d94040','#ff6b6b',
+    '#e87070','#b03030','#f09090','#801010','#c06060'
+  ];
+
+  var labels = sellers.map(function(s) { return s.name; });
+  var values = sellers.map(function(s) { return s.qty; });
+  var colors = sellers.map(function(_, i) { return palette[i % palette.length]; });
+
+  var ctx = canvas.getContext('2d');
+  _chartInstances['sellers'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Units sold',
+        data: values,
+        backgroundColor: colors,
+        borderRadius: 5,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: true,
+      aspectRatio: 1.6,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) { return ' ' + ctx.parsed.x + ' sold'; }
+          },
+          backgroundColor: _isDark() ? '#1f2937' : '#111827',
+          titleColor: '#fff', bodyColor: '#e5e7eb',
+          padding: 10, cornerRadius: 8,
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: _gridColor() },
+          ticks: {
+            color: _tickColor(),
+            font: { size: 10, family: 'Nunito' },
+            stepSize: 1,
+            maxTicksLimit: 6,
+          },
+          border: { display: false }
+        },
+        y: {
+          grid: { display: false },
+          ticks: {
+            color: _labelColor(),
+            font: { size: 11, weight: '700', family: 'Nunito' },
+          },
+          border: { display: false }
+        }
+      }
+    }
+  });
 }
 
 function setSellersMode(mode,btn){
@@ -1929,12 +2088,14 @@ function setSellersMode(mode,btn){
 function loadSellersByRange(){
   var fromEl = document.getElementById('sellers-range-from');
   var toEl   = document.getElementById('sellers-range-to');
-  var el     = document.getElementById('hbar-sellers');
-  if (!fromEl||!toEl||!el) return;
+  if (!fromEl||!toEl) return;
   var fromVal = fromEl.value;
   var toVal   = toEl.value;
-  if (!fromVal||!toVal){ el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">Pick a date range above</div>'; return; }
-  el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">Loading…</div>';
+  if (!fromVal||!toVal){
+    _drawSellersChart([], 'Pick a date range above');
+    return;
+  }
+  _drawSellersChart([], 'Loading…');
   var fromISO = fromVal+'T00:00:00';
   var toISO   = toVal+'T23:59:59';
   sb().from('orders')
@@ -1950,19 +2111,8 @@ function loadSellersByRange(){
         });
       });
       var sellers=Object.keys(map).map(function(k){return {name:k,qty:map[k]};}).sort(function(a,b){return b.qty-a.qty;}).slice(0,8);
-      if(!sellers.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No confirmed sales in this period</div>';return;}
-      var max=sellers[0].qty||1;
-      el.innerHTML=sellers.map(function(s){
-        var w=Math.round((s.qty/max)*100);
-        return '<div class="hbc-row">'+
-          '<div class="hbc-name-wrap">'+
-            '<div class="hbc-name">'+esc(s.name)+'</div>'+
-            '<div class="hbc-qty-badge">'+s.qty+' sold</div>'+
-          '</div>'+
-          '<div class="hbc-bar-wrap"><div class="hbc-bar" style="width:'+w+'%"><span class="hbc-pct">'+w+'%</span></div></div>'+
-        '</div>';
-      }).join('');
-    }).catch(function(){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">Error loading data</div>';});
+      _drawSellersChart(sellers, 'No accepted sales in this period');
+    }).catch(function(){ _drawSellersChart([], 'Error loading data'); });
 }
 
 
@@ -1982,10 +2132,51 @@ function renderLowStockBanner(d){
 }
 function dismissLowStockBanner(){ var b=document.getElementById('low-stock-banner'); if(b) b.classList.add('hidden'); }
 
+var _lastKnownPending = 0;
+var _lastKnownLeads   = 0;
+var _lastKnownB2B     = 0;
+
 function updateNavDots(d){
-  var od=document.getElementById('dot-orders'),pd=document.getElementById('dot-people');
-  if(od) od.className='sb-dot'+((d.orders_waiting||0)>0?' visible':'');
-  if(pd) pd.className='sb-dot'+((d.retail_clients||0)+(d.wholesale_clients||0)+(d.distributor_clients||0)>0?' visible':'');
+  var pendingNow = (d.orders_waiting||0);
+  var leadsNow   = (d.retail_clients||0)+(d.wholesale_clients||0)+(d.distributor_clients||0);
+
+  var od   = document.getElementById('dot-orders');
+  var pd   = document.getElementById('dot-people');
+  var fd   = document.getElementById('dot-followups');
+  var b2bd = document.getElementById('dot-b2b');
+  var cd   = document.getElementById('dot-clients');
+
+  if (od) {
+    if (pendingNow > 0 && pendingNow > _lastKnownPending) {
+      od.className = 'sb-dot visible pulse-dot';
+    } else if (pendingNow > 0) {
+      od.className = 'sb-dot visible';
+    } else {
+      od.className = 'sb-dot';
+    }
+  }
+  _lastKnownPending = pendingNow;
+
+  if (pd) {
+    if (leadsNow > 0 && leadsNow > _lastKnownLeads) {
+      pd.className = 'sb-dot visible pulse-dot';
+    } else if (leadsNow > 0) {
+      pd.className = 'sb-dot visible';
+    } else {
+      pd.className = 'sb-dot';
+    }
+  }
+
+  // B2B dot — glows when new clients arrive
+  if (leadsNow > _lastKnownLeads) {
+    if (b2bd) b2bd.className = 'sb-dot visible pulse-dot';
+    if (cd)   cd.className   = 'sb-dot visible pulse-dot';
+  }
+  _lastKnownLeads = leadsNow;
+
+  if (fd) {
+    fd.className = 'sb-dot' + ((d.follow_ups_overdue||0) > 0 ? ' visible' : '');
+  }
 }
 
 // ── RECOVERY SIGNALS PANEL (Phase 5) ─────────────────────────────────────────
@@ -2098,8 +2289,8 @@ function loadOrders(tab){
   renderRefreshBar('orders');
   var el=document.getElementById('orders-body');
   el.innerHTML='<div class="loading-msg">Loading orders…</div>';
-  var actionMap={pending:'getPendingOrders',confirmed:'getConfirmedOrders',failed:'getFailedOrders'};
-  sbCall(actionMap[APP.currentOrderTab]).then(function(res){
+  var actionMap={paused:'getPausedOrders',pending:'getPendingOrders',confirmed:'getConfirmedOrders',failed:'getFailedOrders'};
+  sbCall(actionMap[APP.currentOrderTab]||'getPausedOrders').then(function(res){
     if(!res.success){el.innerHTML='<div class="loading-msg">Error loading orders.</div>';return;}
     var orders=res.data||[];
     var todaySales=0;
@@ -2108,50 +2299,165 @@ function loadOrders(tab){
       orders.forEach(function(o){if(new Date(o.decided_at||o.created_at).toDateString()===today) todaySales+=parseFloat(o.total)||0;});
     }
     var summaryBar='';
-    if(APP.currentOrderTab==='pending')
-      summaryBar='<div class="orders-summary-bar"><div class="osb-stat"><div class="osb-label">ORDERS WAITING</div><div class="osb-val">'+orders.length+'</div></div><div class="osb-stat"><div class="osb-label">ACTIVE TODAY</div><div class="osb-val">'+orders.length+'</div></div></div>';
+    if(APP.currentOrderTab==='paused')
+      summaryBar='<div class="orders-summary-bar"><div class="osb-stat"><div class="osb-label">PAUSED</div><div class="osb-val">'+orders.length+'</div></div><div class="osb-stat"><div class="osb-label">FORM FILLED, WA NOT SENT</div><div class="osb-val osb-muted">'+orders.length+'</div></div></div>';
+    else if(APP.currentOrderTab==='pending')
+      summaryBar='<div class="orders-summary-bar"><div class="osb-stat"><div class="osb-label">ORDERS WAITING</div><div class="osb-val">'+orders.length+'</div></div><div class="osb-stat"><div class="osb-label">NEED YOUR DECISION</div><div class="osb-val">'+orders.length+'</div></div></div>';
     else if(APP.currentOrderTab==='confirmed')
-      summaryBar='<div class="orders-summary-bar"><div class="osb-stat"><div class="osb-label">TODAY\'S SALES</div><div class="osb-val">₦'+fmt(todaySales)+'</div></div><div class="osb-stat"><div class="osb-label">CONFIRMED ORDERS</div><div class="osb-val">'+orders.length+'</div></div></div>';
+      summaryBar='<div class="orders-summary-bar"><div class="osb-stat"><div class="osb-label">TODAY\'S SALES</div><div class="osb-val">₦'+fmt(todaySales)+'</div></div><div class="osb-stat"><div class="osb-label">ACCEPTED ORDERS</div><div class="osb-val">'+orders.length+'</div></div></div>';
     el.innerHTML=summaryBar+renderOrderCards(orders,APP.currentOrderTab)+renderOrderTable(orders,APP.currentOrderTab);
     if(APP.currentOrderTab==='pending'){
-      var wBtn=document.querySelector('[onclick*="pending"]'); if(wBtn) wBtn.textContent='Waiting ('+orders.length+')';
+      var wBtn=document.querySelector('[onclick*="\'pending\'"]'); if(wBtn) wBtn.textContent='Waiting ('+orders.length+')';
     }
   }).catch(function(){el.innerHTML='<div class="loading-msg">Connection issue.</div>';});
 }
 
 function switchOrderTab(tab,btn){
   document.querySelectorAll('#page-orders .tab').forEach(function(t){t.classList.remove('active');});
-  btn.classList.add('active'); loadOrders(tab);
+  btn.classList.add('active');
+  // Show history strip only for Accepted and Cancelled
+  var strip = document.getElementById('orders-hist-strip');
+  if(strip){
+    if(tab==='confirmed'||tab==='failed'){
+      strip.classList.remove('hidden');
+    } else {
+      strip.classList.add('hidden');
+    }
+  }
+  loadOrders(tab);
+}
+
+function setOrderHistRange(days) {
+  var to   = new Date();
+  var from = new Date(); from.setDate(from.getDate() - days + 1);
+  var fmt  = function(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+  var fromEl = document.getElementById('orders-hist-from');
+  var toEl   = document.getElementById('orders-hist-to');
+  if(fromEl) fromEl.value = fmt(from);
+  if(toEl)   toEl.value   = fmt(to);
+  loadOrdersByRange();
+}
+
+function loadOrdersByRange() {
+  var fromEl = document.getElementById('orders-hist-from');
+  var toEl   = document.getElementById('orders-hist-to');
+  var el     = document.getElementById('orders-body');
+  if(!fromEl||!toEl||!el) return;
+  var fromVal = fromEl.value;
+  var toVal   = toEl.value;
+  if(!fromVal||!toVal){ toast('Please select both a start and end date','bad'); return; }
+  var status  = APP.currentOrderTab; // 'confirmed' or 'failed'
+  if(status!=='confirmed'&&status!=='failed') return;
+  el.innerHTML = '<div class="loading-msg">Searching '+fromVal+' to '+toVal+'…</div>';
+  var fromISO = fromVal+'T00:00:00';
+  var toISO   = toVal+'T23:59:59';
+  sb().from('orders')
+    .select('*, order_items(product_name,qty,unit_price)')
+    .eq('project_id', PROJECT_ID)
+    .eq('status', status)
+    .gte('created_at', fromISO)
+    .lte('created_at', toISO)
+    .order('created_at', {ascending:false})
+    .then(function(r){
+      if(r.error){ el.innerHTML='<div class="loading-msg">Error: '+esc(r.error.message)+'</div>'; return; }
+      var orders = (r.data||[]).map(function(o){
+        var items = (o.order_items||[]);
+        return Object.assign({}, o, {items_json: JSON.stringify(items.map(function(i){ return {name:i.product_name,qty:i.qty,price:i.unit_price}; }))});
+      });
+      // Show range total for confirmed
+      var rangeTotal = status==='confirmed' ? orders.reduce(function(s,o){ return s+(parseFloat(o.total)||0); },0) : 0;
+      var summaryBar = '';
+      if(status==='confirmed')
+        summaryBar='<div class="orders-summary-bar"><div class="osb-stat"><div class="osb-label">RANGE TOTAL</div><div class="osb-val">₦'+fmt(rangeTotal)+'</div></div><div class="osb-stat"><div class="osb-label">ORDERS</div><div class="osb-val">'+orders.length+'</div></div></div>';
+      else
+        summaryBar='<div class="orders-summary-bar"><div class="osb-stat"><div class="osb-label">CANCELLED</div><div class="osb-val">'+orders.length+'</div></div><div class="osb-stat"><div class="osb-label">IN RANGE</div><div class="osb-val">'+fromVal+' — '+toVal+'</div></div></div>';
+      el.innerHTML = summaryBar + renderOrderCards(orders, status);
+    })
+    .catch(function(){ el.innerHTML='<div class="loading-msg">Connection issue.</div>'; });
 }
 
 function renderOrderCards(orders,tab){
   if(!orders.length) return '<div class="card-list"><div class="empty-msg">No '+(tab==='pending'?'orders waiting':tab==='confirmed'?'accepted orders':'cancelled orders')+' right now.</div></div>';
   var html='<div class="card-list">';
   orders.forEach(function(o){
-    var name=o.buyer_name||o.name||'';
-    var items=[]; try{var parsed=JSON.parse(o.items_json||'[]');if(Array.isArray(parsed))items=parsed;}catch(e){}
-    var dBadge=tab==='confirmed'?badge(delivLabel(o.delivery_status),o.delivery_status||'getting_ready'):tab==='pending'?badge('WAITING','waiting'):badge('CANCELLED','fell_through');
-    html+='<div class="order-card">';
-    html+='<div class="order-card-head"><div><div class="order-ref">ORDER #'+esc(o.tracking_ref||o.id||'')+'</div><div class="order-name">'+esc(name)+'</div><div class="order-phone">📞 '+esc(o.phone||'')+'</div></div>'+dBadge+'</div>';
-    if(o.landmark||o.state) html+='<div class="order-location">📍 '+(o.landmark?esc(o.landmark)+', ':'')+esc(o.state||'')+(o.lga?', '+esc(o.lga):'')+'</div>';
+    var name    = o.buyer_name||o.name||'';
+    var items   = o.order_items||[];
+    // Fall back to items_json if order_items empty
+    if(!items.length){ try{ items=(JSON.parse(o.items_json||'[]')).map(function(i){return {product_name:i.name,qty:i.qty,unit_price:i.price};}); }catch(e){} }
+    var placedAt  = o.created_at  ? fmtDateTime(o.created_at)  : '';
+    var decidedAt = o.decided_at  ? fmtDateTime(o.decided_at)  : '';
+    var buyerBadge = {consumer:'CONSUMER',retail:'RETAIL',wholesale:'WHOLESALE',distributor:'DISTRIBUTOR'}[o.buyer_type]||'';
+
+    var dBadge = tab==='confirmed' ? badge(delivLabel(o.delivery_status),o.delivery_status||'getting_ready')
+               : tab==='pending'   ? badge('WAITING','waiting')
+               : badge('CANCELLED','fell_through');
+
+    html += '<div class="order-card">';
+
+    // Header row
+    html += '<div class="order-card-head">';
+    html += '<div class="order-head-left">';
+    html += '<div class="order-ref-row"><span class="order-ref">ORDER #'+esc(o.tracking_ref||o.id||'')+'</span>';
+    if(buyerBadge) html += '<span class="order-type-badge">'+buyerBadge+'</span>';
+    html += '</div>';
+    html += '<div class="order-name">'+esc(name)+'</div>';
+    html += '<div class="order-meta-row">';
+    html += '<span class="order-meta-item"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.56 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg> '+esc(o.phone||'')+'</span>';
+    if(o.state) html += '<span class="order-meta-item"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> '+esc(o.state||'')+(o.lga?', '+esc(o.lga):'')+'</span>';
+    html += '</div>';
+    html += '</div>';
+    html += dBadge;
+    html += '</div>';
+
+    // Timestamps
+    html += '<div class="order-timestamps">';
+    html += '<span class="ots-item">Placed: '+placedAt+'</span>';
+    if(decidedAt) html += '<span class="ots-item">'+(tab==='confirmed'?'Accepted':'Cancelled')+': '+decidedAt+'</span>';
+    html += '</div>';
+
+    // Per-item breakdown — each product on its own row
     if(items.length){
-      html+='<div class="order-items-box">';
-      items.forEach(function(item){html+='<div class="order-item-row"><span>'+esc(item.qty||1)+'x '+esc(item.name||'')+'</span><span class="order-item-price">₦'+fmt((item.qty||1)*(item.price||0))+'</span></div>';});
-      html+='<div class="order-total-row"><span>TOTAL</span><span class="order-total-val">₦'+fmt(o.total)+'</span></div></div>';
+      html += '<div class="order-items-box">';
+      items.forEach(function(item){
+        var lineTotal = (parseInt(item.qty)||1) * (parseFloat(item.unit_price)||0);
+        html += '<div class="order-item-row">';
+        html += '<div class="oitem-name">'+esc(item.product_name||item.name||'Item')+'</div>';
+        html += '<div class="oitem-right">';
+        html += '<span class="oitem-qty">×'+esc(String(item.qty||1))+'</span>';
+        if(lineTotal>0) html += '<span class="oitem-price">₦'+fmt(lineTotal)+'</span>';
+        html += '</div>';
+        html += '</div>';
+      });
+      html += '<div class="order-total-row"><span>TOTAL</span><span class="order-total-val">₦'+fmt(o.total)+'</span></div>';
+      html += '</div>';
     } else {
-      html+='<div class="order-total-row standalone"><span>TOTAL</span><span class="order-total-val">₦'+fmt(o.total)+'</span></div>';
+      html += '<div class="order-total-row standalone"><span>TOTAL</span><span class="order-total-val">₦'+fmt(o.total)+'</span></div>';
     }
-    html+='<div class="order-card-actions">';
+
+    // Actions
+    html += '<div class="order-card-actions">';
     if(tab==='pending'){
-      html+='<button class="btn-confirm" onclick="confirmOrder(\''+esc(o.id)+'\')">'+
+      html += '<button class="btn-confirm" onclick="confirmOrder(\''+esc(o.id)+'\')">'+
         '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> ACCEPT</button>';
-      html+='<button class="btn-fail" onclick="openFailModal(\''+esc(o.id)+'\')">'+
+      html += '<button class="btn-fail" onclick="openFailModal(\''+esc(o.id)+'\')">'+
         '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> CANCEL</button>';
     }
-    if(tab==='confirmed') html+='<button class="btn-edit" onclick="openDeliveryModal(\''+esc(o.id)+'\')">'+
-      '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg> Send to Driver</button>';
-    if(tab==='failed') html+='<span style="font-size:12px;color:var(--text3)">'+esc(o.reason||'')+'</span>';
-    html+='</div></div>';
+    if(tab==='confirmed'){
+      html += '<button class="btn-edit" onclick="openDeliveryModal(\''+esc(o.id)+'\')">'+
+        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg> Send to Driver</button>';
+      html += '<button class="btn-wa-receipt" onclick="openReceiptModal(\''+esc(o.id)+'\')">'+
+        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg> Receipt</button>';
+      html += '<button class="btn-wa-order" onclick="openCustomMsgModal(\'order_accepted\',\''+esc(name)+'\',\''+esc(o.tracking_ref||'')+'\',\''+esc(o.phone||'')+'\',\'\')">'+
+        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg> Thank Customer</button>';
+    }
+    if(tab==='failed'){
+      html += '<span class="order-cancel-reason">'+esc(o.reason||'')+'</span>';
+      if(o.phone){
+        html += '<button class="btn-wa-order" onclick="openCustomMsgModal(\'order_cancelled\',\''+esc(name)+'\',\''+esc(o.tracking_ref||'')+'\',\''+esc(o.phone||'')+'\',\'\')">'+
+          '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9L21 3z"/></svg> Message Customer</button>';
+      }
+    }
+    html += '</div></div>';
   });
   return html+'</div>';
 }
@@ -2267,6 +2573,8 @@ var _WA_TEMPLATES = {
   promo_general:    'Hello {name}! 🎉 Special offer from OA Drinks & Snacks! Order 5+ packs of any product and get 10% off your total. Fresh, natural, delivered to you. WhatsApp us now to order!',
   retention_quiet:  'Hello {name}! 😊 We miss you at OA Drinks & Snacks! It\'s been a while since your last order. Come back and enjoy our fresh Zobo, Tiger Nut Milk, and more. Special discount waiting for you!',
   fell_through:     'Hello {name}! This is OA Drinks & Snacks. We saw your order {ref} did not go through. Was there a problem? We\'d love to help — reply to this message and we\'ll sort it out quickly. 🙏',
+  order_accepted:   'Hello {name}! ✅ Great news — your order *{ref}* has been accepted by OA Drinks & Snacks! We are preparing it now and will reach out shortly to confirm delivery details. Thank you for your order! 🙏',
+  order_cancelled:  'Hello {name}, this is OA Drinks & Snacks. We\'re sorry your order *{ref}* could not go through this time. Please reach out if you\'d like to try again — we\'d love to serve you. Thank you! 🙏',
 };
 
 function buildWaTemplateMsg(templateKey, vars) {
@@ -2455,8 +2763,133 @@ function sendCustomMsg(){
   closeModal('modal-custom-msg');
 }
 
-// ── MISSING RECEIPT + DATETIME FUNCTIONS ─────────────────────────────────────
-// These were referenced in renderOrderCards but need to exist as globals.
+// ── TRACK ID SEARCH ────────────────────────────────────────────────────────────
+
+function openTrackSearch() {
+  var modal = document.getElementById('modal-track-search');
+  if (!modal) return;
+  var inp = document.getElementById('track-search-input');
+  var res = document.getElementById('track-search-results');
+  if (inp) inp.value = '';
+  if (res) res.innerHTML = '';
+  modal.classList.remove('hidden');
+  setTimeout(function(){ if(inp) inp.focus(); }, 120);
+}
+
+function trackSearchLive(val) {
+  // Clear results if empty
+  if (!val || val.trim().length < 2) {
+    var res = document.getElementById('track-search-results');
+    if (res) res.innerHTML = '';
+  }
+}
+
+function doTrackSearch() {
+  var val = (document.getElementById('track-search-input')||{}).value||'';
+  val = val.trim().toUpperCase();
+  var res = document.getElementById('track-search-results');
+  if (!val || val.length < 2) { if(res) res.innerHTML='<div class="track-no-result">Enter at least 2 characters</div>'; return; }
+  if (res) res.innerHTML = '<div class="track-searching">Searching…</div>';
+
+  Promise.all([
+    // Search orders by tracking_ref
+    sb().from('orders')
+      .select('id,tracking_ref,buyer_name,phone,status,total,created_at,buyer_type')
+      .eq('project_id', PROJECT_ID)
+      .ilike('tracking_ref', '%'+val+'%')
+      .limit(5),
+    // Search clients by id (partial) or contact_name
+    sb().from('clients')
+      .select('id,client_type,contact_name,shop_name,phone,where_we_are,created_at')
+      .eq('project_id', PROJECT_ID)
+      .or('contact_name.ilike.%'+val+'%,shop_name.ilike.%'+val+'%,id::text.ilike.%'+val+'%')
+      .limit(5),
+  ]).then(function(results) {
+    var orders  = results[0].data||[];
+    var clients = results[1].data||[];
+
+    if (!orders.length && !clients.length) {
+      res.innerHTML = '<div class="track-no-result">No match found for "'+esc(val)+'"</div>';
+      return;
+    }
+
+    var html = '';
+
+    orders.forEach(function(o) {
+      var statusLabel = {paused:'Paused',pending:'Waiting',confirmed:'Accepted',failed:'Cancelled'}[o.status]||o.status;
+      var statusCls   = {paused:'track-tag-paused',pending:'track-tag-pending',confirmed:'track-tag-ok',failed:'track-tag-fail'}[o.status]||'';
+      html += '<div class="track-result-row" onclick="jumpToOrder(\''+esc(o.id)+'\',\''+esc(o.status)+'\')">';
+      html += '<div class="track-result-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></div>';
+      html += '<div class="track-result-info">';
+      html += '<div class="track-result-ref">'+esc(o.tracking_ref||o.id)+'</div>';
+      html += '<div class="track-result-meta">'+esc(o.buyer_name||'')+(o.phone?' · '+esc(o.phone):'')+'</div>';
+      html += '</div>';
+      html += '<div class="track-result-right">';
+      html += '<span class="track-tag '+statusCls+'">'+statusLabel+'</span>';
+      html += '<span class="track-amt">'+fmtK(o.total)+'</span>';
+      html += '</div>';
+      html += '</div>';
+    });
+
+    clients.forEach(function(c) {
+      var typeLabel = {retail:'Retail',wholesale:'Wholesale',distributor:'Distributor'}[c.client_type]||c.client_type||'';
+      var name = c.contact_name||c.shop_name||'';
+      html += '<div class="track-result-row" onclick="jumpToClient(\''+esc(c.id)+'\',\''+esc(c.client_type)+'\')">';
+      html += '<div class="track-result-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>';
+      html += '<div class="track-result-info">';
+      html += '<div class="track-result-ref">'+esc(name)+'</div>';
+      html += '<div class="track-result-meta">ID: '+esc(String(c.id||'').slice(0,8))+(c.phone?' · '+esc(c.phone):'')+'</div>';
+      html += '</div>';
+      html += '<div class="track-result-right">';
+      html += '<span class="track-tag track-tag-client">'+typeLabel+'</span>';
+      html += '</div>';
+      html += '</div>';
+    });
+
+    res.innerHTML = html;
+  }).catch(function(e) {
+    res.innerHTML = '<div class="track-no-result">Search error. Try again.</div>';
+  });
+}
+
+function jumpToOrder(orderId, status) {
+  closeModal('modal-track-search');
+  var tab = (status==='confirmed') ? 'confirmed' : (status==='failed') ? 'failed' : (status==='paused') ? 'paused' : 'pending';
+  // Navigate to orders section and correct tab
+  goto('orders');
+  setTimeout(function() {
+    // Switch to the correct tab
+    var tabBtns = document.querySelectorAll('#page-orders .tab');
+    var tabMap  = {paused:0, pending:1, confirmed:2, failed:3};
+    var idx = tabMap[tab]||1;
+    if(tabBtns[idx]) { tabBtns[idx].click(); }
+    // After data loads, scroll to and highlight the card
+    setTimeout(function() {
+      _highlightCard('order-'+orderId);
+    }, 800);
+  }, 100);
+}
+
+function jumpToClient(clientId, clientType) {
+  closeModal('modal-track-search');
+  // Navigate to My Clients → B2B tab
+  goto('customers');
+  setTimeout(function() {
+    var b2bBtn = document.querySelector('.clients-b2b-tab');
+    if(b2bBtn) b2bBtn.click();
+    setTimeout(function() {
+      _highlightCard('client-b2b-'+clientId);
+    }, 800);
+  }, 100);
+}
+
+function _highlightCard(id) {
+  var card = document.getElementById(id);
+  if (!card) return;
+  card.scrollIntoView({behavior:'smooth', block:'center'});
+  card.classList.add('card-highlight');
+  setTimeout(function() { card.classList.remove('card-highlight'); }, 2800);
+}
 
 function fmtDateTime(iso){
   if(!iso) return '—';

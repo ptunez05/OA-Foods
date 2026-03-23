@@ -1971,6 +1971,9 @@ body {
 .stage-still-talking { background: rgba(37,99,235,.1);  color: var(--blue);  border-color: rgba(37,99,235,.2); }
 .stage-ready-to-buy  { background: rgba(245,158,11,.12); color: #d97706; border-color: rgba(245,158,11,.25); }
 .stage-not-interested{ background: rgba(100,100,100,.1); color: var(--text2); border-color: var(--border); }
+.stage-order-placed  { background: rgba(22,163,74,.12);  color: #15803d; border-color: rgba(22,163,74,.25); }
+/* B2B confirmed deal card */
+.client-b2b-done { border-left-color: #16a34a; opacity: 0.88; }
 .pcard-detail { font-size: 13px; color: var(--text2); margin-bottom: 4px; }
 .pcard-followup {
   display: flex; justify-content: space-between; align-items: center;
@@ -3478,3 +3481,428 @@ body {
 [data-theme="dark"] .mc-rev-card:hover { background: rgba(255,255,255,0.08); }
 [data-theme="dark"] .mc-rev-amt { color: var(--text); }
 [data-theme="dark"] .mc-rev-bar-wrap { background: rgba(255,255,255,0.1); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SPRINT 1 — ORDER CARD PER-ITEM ROWS + PULSE DOT
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Timestamp strip */
+.ots-item {
+  font-size: 0.65rem;
+  color: var(--text3);
+  font-weight: 600;
+  display: inline-block;
+  margin-right: 10px;
+}
+
+/* Per-item rows inside order card */
+.order-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+}
+.order-item-row:last-of-type { border-bottom: none; }
+
+.oitem-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+.oitem-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.oitem-qty {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text3);
+  background: var(--surface2);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.oitem-price {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--text);
+  min-width: 60px;
+  text-align: right;
+}
+
+/* Cancel reason text */
+.order-cancel-reason {
+  font-size: 0.72rem;
+  color: var(--text3);
+  font-style: italic;
+  padding: 2px 0;
+}
+
+/* Pulse dot — glowing animation on new data */
+@keyframes dotPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(200,0,15,0.7); }
+  70%  { box-shadow: 0 0 0 6px rgba(200,0,15,0); }
+  100% { box-shadow: 0 0 0 0 rgba(200,0,15,0); }
+}
+.sb-dot.pulse-dot {
+  animation: dotPulse 1.4s ease-out 3;
+}
+/* Bottom nav equivalent */
+.bn-dot.pulse-dot {
+  animation: dotPulse 1.4s ease-out 3;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CHART.JS CANVAS WRAPPER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.chart-canvas-wrap {
+  position: relative;
+  width: 100%;
+  padding: 4px 0 8px;
+}
+
+.chart-canvas-wrap canvas {
+  width: 100% !important;
+  max-height: 260px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SPRINT 2 — ORDER WA BUTTON + HISTORY STRIP
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* WA message button on order cards — muted green, less dominant than receipt */
+.btn-wa-order {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(37,211,102,0.1);
+  color: #128c4a;
+  border: 1px solid rgba(37,211,102,0.25);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s;
+  white-space: nowrap;
+}
+.btn-wa-order svg { stroke: #128c4a; flex-shrink: 0; }
+.btn-wa-order:hover {
+  background: linear-gradient(135deg, #25d366 0%, #128c4a 100%);
+  color: white;
+  border-color: transparent;
+}
+.btn-wa-order:hover svg { stroke: white; }
+[data-theme="dark"] .btn-wa-order {
+  background: rgba(37,211,102,0.12);
+  color: #4ade80;
+  border-color: rgba(37,211,102,0.2);
+}
+[data-theme="dark"] .btn-wa-order svg { stroke: #4ade80; }
+
+/* Order history date range strip */
+.orders-hist-strip {
+  background: var(--surface2);
+  border-radius: 10px;
+  padding: 10px 12px 8px;
+  margin-bottom: 10px;
+}
+.orders-hist-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.orders-hist-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 110px;
+}
+.orders-hist-label {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text3);
+}
+.orders-hist-input {
+  padding: 6px 8px;
+  font-size: 0.78rem;
+}
+.orders-hist-go {
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+.orders-hist-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SPRINT 3 — MY CLIENTS PAGE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Ranking strip */
+.clients-rank-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.clients-rank-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-right: 2px;
+}
+.clients-rank-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.clients-rank-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* Date strip */
+.clients-date-strip {
+  margin-bottom: 10px;
+}
+.clients-date-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* B2B tab dot */
+.clients-b2b-tab { position: relative; }
+.clients-b2b-tab .sb-dot {
+  position: static;
+  display: inline-block;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+/* Client card — unified for all tabs */
+.client-card {
+  background: var(--gradient-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  transition: all 0.2s;
+  backdrop-filter: blur(10px);
+}
+.client-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+
+.client-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.client-rank {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.78rem; font-weight: 900;
+  flex-shrink: 0;
+  background: var(--surface2);
+  color: var(--text2);
+}
+.rank-gold   { background: linear-gradient(135deg,#f59e0b,#d97706); color:#fff; }
+.rank-silver { background: linear-gradient(135deg,#9ca3af,#6b7280); color:#fff; }
+.rank-bronze { background: linear-gradient(135deg,#d97706,#b45309); color:#fff; }
+
+.client-avatar {
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.client-info { flex: 1; min-width: 0; }
+.client-name { font-size: 0.88rem; font-weight: 800; color: var(--text); }
+.client-biz  { font-size: 0.72rem; color: var(--text3); margin-top: 1px; }
+
+.client-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 3px;
+}
+.client-meta span {
+  font-size: 0.66rem;
+  color: var(--text3);
+  font-weight: 600;
+}
+.client-products {
+  font-size: 0.66rem;
+  color: var(--text3);
+  margin-top: 3px;
+  font-style: italic;
+}
+.client-owes {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--red);
+  margin-top: 3px;
+}
+
+.client-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.client-spent {
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: var(--accent);
+}
+
+/* Type chip in B2B */
+.client-type-chip {
+  font-size: 0.58rem;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Discount nudge */
+.client-discount-nudge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #16a34a;
+  background: rgba(22,163,74,0.08);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-top: 4px;
+}
+.client-discount-nudge svg { stroke: #16a34a; }
+.client-discount-atrisk { color: #d97706; background: rgba(217,119,6,0.08); }
+.client-discount-atrisk svg { stroke: #d97706; }
+
+/* B2B card accent */
+.client-b2b { border-left: 3px solid var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SPRINT 3 — TRACK ID SEARCH
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Topbar search button */
+.tb-search {
+  background: none;
+  border: none;
+  color: var(--text2);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.18s;
+  flex-shrink: 0;
+}
+.tb-search:hover { background: var(--surface2); }
+.tb-search svg { stroke: currentColor; }
+
+.track-search-hint {
+  font-size: 0.72rem;
+  color: var(--text3);
+  margin-bottom: 10px;
+}
+.track-search-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.track-search-field { flex: 1; }
+
+.track-search-results { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+.track-searching, .track-no-result {
+  font-size: 0.78rem;
+  color: var(--text3);
+  padding: 10px 0;
+  text-align: center;
+}
+
+.track-result-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.18s;
+}
+.track-result-row:hover { background: var(--surface3, #e5e7eb); }
+[data-theme="dark"] .track-result-row:hover { background: rgba(255,255,255,0.08); }
+
+.track-result-icon {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  background: rgba(200,0,15,0.08);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.track-result-icon svg { stroke: var(--accent); }
+
+.track-result-info { flex: 1; min-width: 0; }
+.track-result-ref  { font-size: 0.82rem; font-weight: 800; color: var(--text); }
+.track-result-meta { font-size: 0.66rem; color: var(--text3); margin-top: 2px; }
+
+.track-result-right {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0;
+}
+.track-amt { font-size: 0.78rem; font-weight: 800; color: var(--accent); }
+
+.track-tag {
+  font-size: 0.58rem; font-weight: 800;
+  padding: 2px 7px; border-radius: 5px;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.track-tag-ok      { background: rgba(22,163,74,.1);  color: #15803d; }
+.track-tag-pending { background: rgba(245,158,11,.1); color: #d97706; }
+.track-tag-paused  { background: rgba(107,114,128,.1);color: #6b7280; }
+.track-tag-fail    { background: rgba(220,38,38,.1);  color: #dc2626; }
+.track-tag-client  { background: rgba(37,99,235,.1);  color: #1d4ed8; }
+
+/* Card highlight animation — triggered by Track ID jump */
+@keyframes cardHighlight {
+  0%   { box-shadow: 0 0 0 0 rgba(200,0,15,0.7), var(--shadow); background: rgba(200,0,15,0.08); }
+  40%  { box-shadow: 0 0 0 8px rgba(200,0,15,0.15), var(--shadow-md); }
+  100% { box-shadow: var(--shadow); background: var(--gradient-card); }
+}
+.card-highlight {
+  animation: cardHighlight 2.6s ease-out forwards;
+}
