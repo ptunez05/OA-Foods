@@ -37,6 +37,14 @@ window.addEventListener('online', function() {
 // ── SUPABASE INSERT ───────────────────────────────────────────────────────────
 // Saves distributor application as a CRM client entry (client_type = distributor).
 
+function generateDistUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0;
+        var v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
 function sendDistToSupabase(payload) {
     var headers = {
         'Content-Type':  'application/json',
@@ -45,10 +53,13 @@ function sendDistToSupabase(payload) {
         'Prefer':        'return=minimal'
     };
 
+    var clientId = payload.client_id || generateDistUUID();
+
     fetch(SUPABASE_URL + '/rest/v1/clients', {
         method:  'POST',
         headers: headers,
         body: JSON.stringify({
+            id:           clientId,
             project_id:   PROJECT_ID,
             client_type:  'distributor',
             contact_name: payload.name,
@@ -59,8 +70,19 @@ function sendDistToSupabase(payload) {
             heard_from:   payload.heard_from || null,
             notes:        payload.notes || null,
             where_we_are: 'still_talking',
+            tracking_ref: payload.tracking_ref || null,
         })
-    }).catch(function() {});
+    })
+    .then(function(r) {
+        if (!r.ok) {
+            r.text().then(function(t) {
+                console.error('OA dist client insert failed:', r.status, t);
+                // Common fix hint for 403 — run in Supabase SQL editor:
+                // CREATE POLICY "clients_public_insert" ON clients FOR INSERT TO anon WITH CHECK (true);
+            });
+        }
+    })
+    .catch(function(e) { console.error('OA dist client fetch error:', e); });
 }
 
 // ── ORDER STATE ───────────────────────────────────────────────────────────────
@@ -238,14 +260,15 @@ function processWhatsAppApplication() {
 
     // Save application to Supabase — uses offline queue if network is down
     oaDistSend({
-        name:      name,
-        phone:     phone,
-        state:     state,
-        lga:       region,
-        qty:       distQty,
-        kit:       document.getElementById('kit-toggle').checked ? 'Yes' : 'No',
-        heard_from: document.getElementById('p-referral')?.value || '',
-        notes:     comments || '',
+        name:         name,
+        phone:        phone,
+        state:        state,
+        lga:          region,
+        qty:          distQty,
+        kit:          document.getElementById('kit-toggle').checked ? 'Yes' : 'No',
+        heard_from:   document.getElementById('p-referral')?.value || '',
+        notes:        comments || '',
+        tracking_ref: trackingID,
     });
 
     let msg = `*NEW DISTRIBUTOR APPLICATION: ${trackingID}*\n----------------------------------\n`;

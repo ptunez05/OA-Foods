@@ -3906,3 +3906,104 @@ body {
 .card-highlight {
   animation: cardHighlight 2.6s ease-out forwards;
 }
+
+/* ── WHO DID WHAT — context banner ──────────────────────────────────────────── */
+.wdw-context-banner {
+  display: flex; align-items: flex-start; gap: 8px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 13px;
+  font-size: 0.72rem; color: var(--text3); line-height: 1.5;
+  margin-bottom: 12px;
+}
+.wdw-context-banner svg { flex-shrink: 0; margin-top: 1px; stroke: var(--text3); }
+
+/* ── MINI ACCOUNTANT ─────────────────────────────────────────────────────────── */
+.acct-card {
+  background: var(--gradient-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 14px 12px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.acct-title {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 0.72rem; font-weight: 800; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 13px;
+}
+.acct-title svg { stroke: var(--text3); flex-shrink:0; }
+.acct-add-btn {
+  margin-left: auto;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 6px;
+  padding: 4px 10px; font-size: 0.68rem; font-weight: 700;
+  cursor: pointer; font-family: inherit;
+}
+.acct-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.acct-item {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 9px; padding: 10px 11px;
+}
+.acct-item-lbl {
+  font-size: 0.6rem; font-weight: 800; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;
+}
+.acct-item-val {
+  font-size: 1.05rem; font-weight: 900; color: var(--text); line-height: 1.1;
+}
+.acct-item-sub {
+  font-size: 0.62rem; color: var(--text3); margin-top: 3px;
+}
+.acct-neg { color: var(--red) !important; }
+.acct-profit-pos .acct-item-val { color: var(--green); }
+.acct-profit-neg .acct-item-val { color: var(--red); }
+.acct-profit-pos { border-color: rgba(22,163,74,0.3) !important; background: rgba(22,163,74,0.05) !important; }
+.acct-profit-neg { border-color: rgba(200,0,15,0.3) !important; background: rgba(200,0,15,0.04) !important; }
+
+.acct-exp-list {
+  margin-top: 10px; display: flex; flex-direction: column; gap: 5px;
+}
+.acct-exp-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg2); border-radius: 7px;
+  padding: 6px 10px; border: 1px solid var(--border);
+}
+.acct-exp-tag  { flex: 1; font-size: 0.72rem; font-weight: 700; color: var(--text); }
+.acct-exp-amt  { font-size: 0.72rem; font-weight: 800; color: var(--red); }
+.acct-exp-del  {
+  background: none; border: none; color: var(--text3);
+  font-size: 0.75rem; cursor: pointer; padding: 0 2px; line-height: 1;
+}
+.acct-offline-note {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 10px; font-size: 0.62rem; color: var(--text3);
+}
+.acct-offline-note svg { flex-shrink:0; stroke: var(--text3); }
+
+/* ── B2B ALL PIPELINE — summary chips ──────────────────────────────────────── */
+.b2b-pipeline-summary {
+  display: flex; flex-wrap: wrap; gap: 7px;
+  margin-bottom: 12px;
+}
+.b2b-ps-chip {
+  font-size: 0.68rem; font-weight: 800;
+  padding: 4px 11px; border-radius: 20px;
+  background: var(--bg2); color: var(--text3);
+  border: 1px solid var(--border);
+}
+.b2b-ps-active { background: rgba(37,99,235,0.08); color: #2563eb; border-color: rgba(37,99,235,0.2); }
+.b2b-ps-done   { background: rgba(22,163,74,0.08);  color: #15803d;  border-color: rgba(22,163,74,0.2); }
+
+/* People card confirmed state */
+.people-card-done { opacity: 0.82; border-left: 3px solid var(--green) !important; }
+
+/* Pulse glance (hidden — reserved for future hover tooltip) */
+.pulse-glance { display: none; }
+
+/* Pulse ring cursor */
+.pulse-ring { cursor: pointer; }

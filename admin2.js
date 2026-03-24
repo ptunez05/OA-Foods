@@ -172,8 +172,13 @@ function loadStock(tab){
       el.innerHTML=renderSimpleTable(res.data||[],['id','made_on','product_name','qty_made','expires_on','batch_note'],['Batch ID','Made On','Item','Qty Made','Expires On','Note']);
     });
   } else {
+    // Who Did What — Stock: shows every stock movement in this shop
     sbCall('getStockLog').then(function(res){
-      el.innerHTML=renderSimpleTable(res.data||[],['when','product_name','change_qty','reason','recorded_by','stock_before','stock_after'],['When','Item','Change','Reason','Done By','Before','After']);
+      var rows=res.data||[];
+      var ctx='<div class="wdw-context-banner">'+
+        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'+
+        ' Every stock movement — additions, removals, batch production — recorded here by item and staff member.</div>';
+      el.innerHTML=ctx+renderSimpleTable(rows,['when','product_name','change_qty','reason','recorded_by','stock_before','stock_after'],['When','Item','Change','Reason','Done By','Before','After']);
     });
   }
 }
@@ -258,6 +263,13 @@ function loadPeople(tab){
   renderRefreshBar('people');
   var el=document.getElementById('people-body');
   el.innerHTML='<div class="loading-msg">Loading…</div>';
+
+  // b2b_all — show entire client pipeline across all types
+  if(APP.currentPeopleTab==='b2b_all'){
+    _loadB2BAllPipelineTab(el);
+    return;
+  }
+
   var actionMap={retail:'getRetailClients',wholesale:'getWholesaleClients',distributor:'getDistributors'};
   sbCall(actionMap[APP.currentPeopleTab]).then(function(res){
     if(!res.success){el.innerHTML='<div class="loading-msg">Error.</div>';return;}
@@ -303,6 +315,86 @@ function loadPeople(tab){
 function switchPeopleTab(tab,btn){
   document.querySelectorAll('#page-people .tab').forEach(function(t){t.classList.remove('active');});
   btn.classList.add('active'); loadPeople(tab);
+}
+
+// ── B2B ALL PIPELINE TAB — consolidates retail + wholesale + distributor leads ─
+function _loadB2BAllPipelineTab(el) {
+  var subEl=document.getElementById('people-subtitle');
+  if(subEl) subEl.textContent='All active B2B leads — Small Shops, Wholesalers and Distributors';
+
+  sb().from('clients').select('*')
+    .eq('project_id',PROJECT_ID)
+    .neq('where_we_are','not_interested')
+    .order('created_at',{ascending:false})
+    .then(function(r){
+      if(r.error){ el.innerHTML='<div class="loading-msg">Error loading pipeline.</div>'; return; }
+      var all=r.data||[];
+      if(!all.length){ el.innerHTML='<div class="card-list"><div class="empty-msg">No B2B leads yet. They appear here once someone submits an enquiry from the business or distributor page.</div></div>'; return; }
+
+      var typeLabels={retail:'Small Shop',wholesale:'Wholesaler',distributor:'Distributor'};
+      var typeColors={retail:'var(--accent)',wholesale:'#2563eb',distributor:'#7c3aed'};
+
+      // Group: pipeline (not confirmed) and confirmed deals
+      var pipeline  = all.filter(function(c){ return c.where_we_are !== 'order_placed'; });
+      var confirmed = all.filter(function(c){ return c.where_we_are === 'order_placed'; });
+
+      var html='';
+      // Summary strip
+      html+='<div class="b2b-pipeline-summary">'+
+        '<span class="b2b-ps-chip">'+all.length+' total leads</span>'+
+        '<span class="b2b-ps-chip b2b-ps-active">'+pipeline.length+' in pipeline</span>'+
+        '<span class="b2b-ps-chip b2b-ps-done">'+confirmed.length+' confirmed deals</span>'+
+      '</div>';
+
+      if(pipeline.length){
+        html+='<div class="cb-section-head" style="margin-top:10px">Active Pipeline ('+pipeline.length+')</div>';
+        html+='<div class="card-list">';
+        pipeline.forEach(function(c){ html+=_b2bPeopleCard(c,typeLabels,typeColors); });
+        html+='</div>';
+      }
+      if(confirmed.length){
+        html+='<div class="cb-section-head" style="margin-top:14px">Deal Confirmed ('+confirmed.length+') ✓</div>';
+        html+='<div class="card-list">';
+        confirmed.forEach(function(c){ html+=_b2bPeopleCard(c,typeLabels,typeColors); });
+        html+='</div>';
+      }
+      el.innerHTML=html;
+    })
+    .catch(function(){ el.innerHTML='<div class="loading-msg">Connection issue.</div>'; });
+}
+
+function _b2bPeopleCard(c,typeLabels,typeColors){
+  var name=c.contact_name||c.shop_name||'';
+  var cleanPhone=String(c.phone||'').replace(/\D/g,'');
+  if(cleanPhone.startsWith('0')) cleanPhone='234'+cleanPhone.slice(1);
+  var stage=c.where_we_are||'still_talking';
+  var stageCls='stage-'+stage.replace(/_/g,'-');
+  var typeLbl=typeLabels[c.client_type]||c.client_type||'';
+  var typeCol=typeColors[c.client_type]||'var(--accent)';
+  var owes=parseFloat(c.balance_owed)||0;
+  var isConfirmed=stage==='order_placed';
+  var av=initials(name)||'?';
+
+  var html='<div class="people-card'+(isConfirmed?' people-card-done':'')+'">';
+  html+='<div class="pcard-head">';
+  html+='<div class="pcard-avatar" style="background:'+typeCol+'">'+esc(av)+'</div>';
+  html+='<div class="pcard-info">';
+  html+='<div class="pcard-id"><span class="client-type-chip" style="background:'+typeCol+'20;color:'+typeCol+'">'+typeLbl+'</span></div>';
+  html+='<div class="pcard-name">'+esc(name)+'</div>';
+  if(c.shop_name&&c.contact_name) html+='<div class="pcard-biz">'+esc(c.shop_name)+'</div>';
+  html+='</div>';
+  html+='<span class="people-stage-badge '+stageCls+'">'+stageLabel(stage)+'</span>';
+  html+='</div>';
+  if(c.state||c.lga) html+='<div class="pcard-detail">📍 '+esc((c.lga||'')+((c.lga&&c.state)?', ':'')+( c.state||''))+'</div>';
+  if(c.interest)      html+='<div class="pcard-detail">🧺 '+esc(c.interest)+'</div>';
+  if(c.remind_me_on&&!isConfirmed) html+='<div class="pcard-followup"><span>🔔 '+esc(c.remind_me_on)+'</span></div>';
+  if(owes>0) html+='<div class="pcard-owes">💳 Owes: ₦'+fmt(owes)+'</div>';
+  html+='<div class="pcard-actions">';
+  html+='<button class="pcard-btn pcard-update" onclick="openPeopleModal(\''+esc(c.id)+'\',\''+esc(c.client_type)+'\',\''+esc(stage)+'\')">⇄ UPDATE</button>';
+  if(cleanPhone) html+='<a class="pcard-btn pcard-wa" href="https://wa.me/'+cleanPhone+'" target="_blank">💬 WHATSAPP</a>';
+  if(owes>0) html+='<button class="pcard-btn pcard-record" onclick="openPaymentModal(\''+esc(c.id)+'\',\''+esc(c.client_type)+'\',\''+esc(name)+'\','+owes+')">💰 RECORD</button>';
+  html+='</div></div>';
+  return html;
 }
 
 function stageLabel(stage){
@@ -747,7 +839,7 @@ function loadMoney(){
           '<div class="mts-val '+(totProfit>=0?'profit-pos':'profit-neg')+'">₦'+fmt(totProfit)+'</div>'+
           '<div class="mts-source">from manual records</div></div>'+
         '<div class="mts-item"><div class="mts-label">THIS MONTH (LIVE)</div>'+
-          '<div class="mts-val">₦'+fmtK(liveRev)+'</div>'+
+          '<div class="mts-val">'+fmtK(liveRev)+'</div>'+
           '<div class="mts-source">'+liveCount+' accepted order'+(liveCount!==1?'s':'')+
             (chgPct!==0?' · <span class="mts-change '+(chgPct>0?'pos':'neg')+'">'+chgSign+chgPct+'% vs last month</span>':'')+
           '</div></div>'+
@@ -770,6 +862,7 @@ function loadMoney(){
       :'');
 
     if(!rows.length){
+      renderMoneyAccountant(liveRev, 0, 0, 0, false);
       el.innerHTML=
         '<div class="money-live-banner">'+
           '<div class="mlb-title">'+
@@ -783,6 +876,10 @@ function loadMoney(){
     }
 
     var recentRows=rows.slice().reverse().slice(0,5);
+
+    // ── Mini accountant strip ─────────────────────────────────────────────────
+    renderMoneyAccountant(liveRev, totCost, totSpoil, totProfit, rows.length > 0);
+
     el.innerHTML=
       // Live orders this month (auto, always shown)
       (liveOrders.length?
@@ -846,6 +943,146 @@ function renderLiveOrdersList(orders){
       '</div>';
     }).join('')+
   '</div>';
+}
+
+// ── MINI AUTO-ACCOUNTANT ───────────────────────────────────────────────────────
+// Aggregates: Revenue vs Product Costs vs Expenses (custom) vs Profit.
+// Expenses are stored in localStorage so they work offline before reconciliation.
+
+var _EXPENSE_KEY = 'oa_cash_expenses';
+
+function _getExpenses() {
+  try { return JSON.parse(localStorage.getItem(_EXPENSE_KEY)||'[]'); } catch(e){ return []; }
+}
+function _saveExpenses(arr) {
+  try { localStorage.setItem(_EXPENSE_KEY, JSON.stringify(arr)); } catch(e){}
+}
+
+function renderMoneyAccountant(liveRev, prodCost, spoilage, manualProfit, hasManualRecords) {
+  var strip = document.getElementById('money-accountant');
+  if(!strip) return;
+
+  var expenses = _getExpenses();
+  var totalExpenses = expenses.reduce(function(s,e){ return s+(parseFloat(e.amount)||0); },0);
+
+  // Revenue = live confirmed orders revenue
+  // Product cost = from manual money_records total_cost
+  // Expenses = user-entered custom tags (tax, salary, levy, etc.)
+  // Net profit = revenue − product cost − expenses − spoilage
+  var netProfit = liveRev - prodCost - totalExpenses - spoilage;
+  var isProfit = netProfit >= 0;
+
+  var expenseRows = '';
+  if(expenses.length) {
+    expenseRows = expenses.map(function(e){
+      return '<div class="acct-exp-row">'+
+        '<span class="acct-exp-tag">'+esc(e.tag||'Expense')+'</span>'+
+        '<span class="acct-exp-amt">−₦'+fmt(e.amount||0)+'</span>'+
+        '<button class="acct-exp-del" onclick="deleteExpense(\''+esc(e.id)+'\')">✕</button>'+
+      '</div>';
+    }).join('');
+  }
+
+  strip.innerHTML =
+    '<div class="acct-card">'+
+      '<div class="acct-title">'+
+        '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>'+
+        ' Mini Accountant'+
+        '<button class="acct-add-btn" onclick="openExpenseForm()">+ Expense</button>'+
+      '</div>'+
+      '<div class="acct-grid">'+
+        '<div class="acct-item acct-rev">'+
+          '<div class="acct-item-lbl">REVENUE</div>'+
+          '<div class="acct-item-val">'+fmtK(liveRev)+'</div>'+
+          '<div class="acct-item-sub">Live accepted orders</div>'+
+        '</div>'+
+        '<div class="acct-item acct-cost">'+
+          '<div class="acct-item-lbl">PRODUCT COST</div>'+
+          '<div class="acct-item-val acct-neg">−'+fmtK(prodCost)+'</div>'+
+          '<div class="acct-item-sub">'+(hasManualRecords?'From manual records':'Add a manual record')+'</div>'+
+        '</div>'+
+        '<div class="acct-item acct-exp">'+
+          '<div class="acct-item-lbl">EXPENSES</div>'+
+          '<div class="acct-item-val acct-neg">−'+fmtK(totalExpenses)+'</div>'+
+          '<div class="acct-item-sub">'+(expenses.length?expenses.length+' item'+(expenses.length!==1?'s':''):'Tap + Expense to add')+'</div>'+
+        '</div>'+
+        '<div class="acct-item acct-profit '+(isProfit?'acct-profit-pos':'acct-profit-neg')+'">'+
+          '<div class="acct-item-lbl">NET PROFIT</div>'+
+          '<div class="acct-item-val">'+(isProfit?'+':'')+''+fmtK(netProfit)+'</div>'+
+          '<div class="acct-item-sub">'+(isProfit?'After all costs':'Loss — review expenses')+'</div>'+
+        '</div>'+
+      '</div>'+
+      // Expense tag list
+      (expenses.length?'<div class="acct-exp-list">'+expenseRows+'</div>':'')+
+      // Offline note
+      '<div class="acct-offline-note">'+
+        '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.56 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'+
+        ' Expenses saved on this device — works offline. Revenue and costs sync from server.'+
+      '</div>'+
+    '</div>';
+}
+
+function openExpenseForm() {
+  var modal = document.getElementById('modal-expense');
+  if(!modal){
+    // Build modal inline if not in HTML
+    var m = document.createElement('div');
+    m.id = 'modal-expense'; m.className = 'modal-bg';
+    m.innerHTML =
+      '<div class="modal-box">'+
+        '<div class="modal-title">Add Expense</div>'+
+        '<label class="field-label">Category / Tag</label>'+
+        '<input type="text" id="exp-tag" class="field-input" placeholder="e.g. Salary, Tax, Levy, Transport, Rent…"/>'+
+        '<label class="field-label">Amount (₦)</label>'+
+        '<input type="number" id="exp-amount" class="field-input" placeholder="e.g. 15000" min="0"/>'+
+        '<label class="field-label">Note (optional)</label>'+
+        '<input type="text" id="exp-note" class="field-input" placeholder="Any detail"/>'+
+        '<div class="modal-actions">'+
+          '<button class="btn-ghost" onclick="closeModal(\'modal-expense\')">Cancel</button>'+
+          '<button class="btn-main" onclick="submitExpense()">Save Expense</button>'+
+        '</div>'+
+      '</div>';
+    m.addEventListener('click', function(e){ if(e.target===m) closeModal('modal-expense'); });
+    document.body.appendChild(m);
+    modal = m;
+  }
+  var tagEl = document.getElementById('exp-tag');
+  var amtEl = document.getElementById('exp-amount');
+  var noteEl = document.getElementById('exp-note');
+  if(tagEl)  tagEl.value  = '';
+  if(amtEl)  amtEl.value  = '';
+  if(noteEl) noteEl.value = '';
+  modal.classList.remove('hidden');
+}
+
+function submitExpense() {
+  var tag    = (document.getElementById('exp-tag')?.value||'').trim();
+  var amount = parseFloat(document.getElementById('exp-amount')?.value||0);
+  var note   = (document.getElementById('exp-note')?.value||'').trim();
+  if(!tag)    { toast('Please enter a category / tag for this expense','bad'); return; }
+  if(!amount||amount<=0){ toast('Please enter a valid amount','bad'); return; }
+
+  var expenses = _getExpenses();
+  expenses.push({
+    id:     'exp_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),
+    tag:    tag,
+    amount: amount,
+    note:   note,
+    date:   new Date().toISOString().slice(0,10),
+  });
+  _saveExpenses(expenses);
+  closeModal('modal-expense');
+  toast('Expense saved — ₦'+fmt(amount)+' ('+tag+')','good');
+  // Log to audit
+  writeAudit('add_expense','Expense recorded: '+tag+' ₦'+fmt(amount),'money',null);
+  loadMoney(); // re-render accountant strip
+}
+
+function deleteExpense(id) {
+  var expenses = _getExpenses().filter(function(e){ return e.id !== id; });
+  _saveExpenses(expenses);
+  toast('Expense removed','good');
+  loadMoney();
 }
 
 function buildInsight(rows,chgPct,totSpoil,totIn){
@@ -996,7 +1233,10 @@ function loadSettings(tab){
   if(tab==='audit'){
     sbCall('getAuditLog').then(function(res){
       var rows=(res.data||[]).slice(0,100);
-      el.innerHTML=renderSimpleTable(rows,['when','action','details','done_by'],['When','What Happened','Details','Done By']);
+      var ctx='<div class="wdw-context-banner">'+
+        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'+
+        ' All admin actions across every section — orders accepted/cancelled, products edited, settings changed, staff added. Last 100 actions shown.</div>';
+      el.innerHTML=ctx+renderSimpleTable(rows,['when','action','details','done_by'],['When','What Happened','Details','Done By']);
     });
   }
 }

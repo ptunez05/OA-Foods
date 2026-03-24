@@ -417,7 +417,7 @@ function goto(name, el) {
     });
   }
   var titles = {today:'Shop Today',orders:'Orders',items:'My Products',
-    stock:'My Stock',people:'My Customers',customers:'My Customers',
+    stock:'My Stock',people:'B2B Partner',customers:'My Customers',
     money:'My Cash Book',settings:'Shop Settings',
     followups:'Reminders'};
   var tb = document.getElementById('tb-title');
@@ -1760,11 +1760,19 @@ function setPulse(id,colour){ var el=document.getElementById(id); if(el) el.clas
 function setStatusText(id,text,colour){ var el=document.getElementById(id); if(!el) return; el.textContent=text; el.className='pulse-status-text pulse-text-'+colour; }
 
 function expandPulse(type){
+  // Drawers still populated for data context; navigation handled by onclick on ring element
   var d=APP.pulseData; if(!d) return;
-  if(APP.openDrawer===type){document.getElementById('drawer-'+type).classList.add('hidden');APP.openDrawer='';return;}
-  ['money','stock-p','people-p'].forEach(function(t){document.getElementById('drawer-'+t).classList.add('hidden');});
+  var drawer=document.getElementById('drawer-'+type);
+  if(!drawer) return;
+  // If the drawer was already open, close it (toggle)
+  if(!drawer.classList.contains('hidden') && APP.openDrawer===type){
+    drawer.classList.add('hidden'); APP.openDrawer=''; return;
+  }
+  ['money','stock-p','people-p'].forEach(function(t){
+    var el=document.getElementById('drawer-'+t); if(el) el.classList.add('hidden');
+  });
   APP.openDrawer=type;
-  var drawer=document.getElementById('drawer-'+type); drawer.classList.remove('hidden');
+  drawer.classList.remove('hidden');
   if(type==='money'){
     var ch=d.money_change_pct||0,arr=ch>0?'▲':ch<0?'▼':'—',col=ch>0?'color:var(--green)':ch<0?'color:var(--red)':'';
     drawer.innerHTML='<div class="drawer-msg">'+esc(d.money_message)+'</div>'+
@@ -1774,7 +1782,8 @@ function expandPulse(type){
       drow('Change vs last month','<span style="'+col+'">'+arr+' '+Math.abs(ch)+'%</span>')+
       drow('People still owe you','₦'+fmt(d.people_still_owe_you))+
       drow('Monthly goal','₦'+fmt(d.monthly_target))+
-      drow('Goal reached',d.target_reached_pct+'%');
+      drow('Goal reached',d.target_reached_pct+'%')+
+      '<div class="drawer-nav-hint">Tap ring again to go to Cash Book →</div>';
   }
   if(type==='stock-p'){
     var items=d.items_running_low||[];
@@ -1786,6 +1795,7 @@ function expandPulse(type){
       inner+='<div class="drawer-detail" style="margin-top:10px;font-weight:800">Running low:</div>';
       items.forEach(function(i){inner+=drow(esc(i.name),'<span style="color:var(--red);font-weight:800">'+i.stock+' left</span> (alert at '+i.alert_level+')');});
     }
+    inner+='<div class="drawer-nav-hint">Tap ring again to go to My Stock →</div>';
     drawer.innerHTML=inner;
   }
   if(type==='people-p'){
@@ -1794,7 +1804,8 @@ function expandPulse(type){
       drow('Wholesalers',d.wholesale_clients||0)+
       drow('Distributors',d.distributor_clients||0)+
       drow('Reminders overdue',d.follow_ups_overdue||0)+
-      drow('Reminders due today',d.follow_ups_today||0);
+      drow('Reminders due today',d.follow_ups_today||0)+
+      '<div class="drawer-nav-hint">Tap ring again to go to B2B Partner →</div>';
   }
 }
 function drow(label,val){ return '<div class="drawer-row"><span>'+label+'</span><strong>'+val+'</strong></div>'; }
@@ -1822,6 +1833,14 @@ function renderMetricCards(d){
   var chgTxt    = chgPct>0 ? '+'+chgPct+'% vs last month' : chgPct<0 ? chgPct+'% vs last month' : 'Same as last month';
   var chgCls    = chgPct>0 ? 'mc-trend-up' : chgPct<0 ? 'mc-trend-down' : '';
 
+  // 3. B2B Pipeline — active CRM leads (replaces near-duplicate stock card)
+  var b2bTotal  = (d.retail_clients||0)+(d.wholesale_clients||0)+(d.distributor_clients||0);
+  var b2bSub    = [];
+  if (d.retail_clients)      b2bSub.push(d.retail_clients+' shops');
+  if (d.wholesale_clients)   b2bSub.push(d.wholesale_clients+' wholesale');
+  if (d.distributor_clients) b2bSub.push(d.distributor_clients+' dist.');
+  var b2bSubTxt = b2bSub.join(' · ') || 'No active leads yet';
+
   grid.innerHTML =
     mCard('mc-cash',
       fmtK(todayAmt),
@@ -1839,13 +1858,13 @@ function renderMetricCards(d){
       '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
       '', 'orders'
     )+
-    mCard('mc-stock',
-      lowCount===0 ? '✓' : String(lowCount),
-      lowCount===0 ? 'STOCK ALL GOOD' : 'RESTOCK NEEDED',
-      lowCount===0 ? 'All '+(d.total_products||0)+' items stocked up' : lowNames||'Check items below',
-      lowCount>0 ? 'Tap to restock now' : null,
-      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
-      '', 'stock'
+    mCard('mc-b2b',
+      String(b2bTotal),
+      'B2B PIPELINE',
+      b2bSubTxt,
+      overdue>0 ? overdue+' reminder'+(overdue!==1?'s':'')+' overdue' : null,
+      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>',
+      b2bTotal===0 ? '' : 'mc-b2b-live', 'people'
     )+
     mCard('mc-owed',
       owedAmt>0 ? fmtK(owedAmt) : '₦0',
@@ -1920,10 +1939,12 @@ function renderMonthlyChart(d) {
   var values = months.map(function(m) { return m.revenue || 0; });
   var now = new Date().toISOString().slice(0,7);
   var bgColors = months.map(function(m) {
-    return m.month === now ? '#c8000f' : (_isDark() ? 'rgba(200,0,15,0.45)' : 'rgba(200,0,15,0.22)');
+    return m.month === now
+      ? 'rgba(200,0,15,0.80)'
+      : (_isDark() ? 'rgba(200,0,15,0.30)' : 'rgba(200,0,15,0.18)');
   });
   var borderColors = months.map(function(m) {
-    return m.month === now ? '#c8000f' : 'rgba(200,0,15,0.6)';
+    return m.month === now ? 'rgba(200,0,15,0.90)' : 'rgba(200,0,15,0.40)';
   });
 
   var ctx = canvas.getContext('2d');
@@ -1936,9 +1957,11 @@ function renderMonthlyChart(d) {
         data: values,
         backgroundColor: bgColors,
         borderColor: borderColors,
-        borderWidth: 2,
-        borderRadius: 6,
+        borderWidth: 1,
+        borderRadius: 4,
         borderSkipped: false,
+        barThickness: 18,
+        maxBarThickness: 22,
       }]
     },
     options: {
@@ -2006,10 +2029,11 @@ function _drawSellersChart(sellers, emptyMsg) {
   var old = document.getElementById('hbar-sellers-empty');
   if (old) old.remove();
 
-  // Chart.js palette — zobo red gradient shades
+  // Muted, slim palette — subtle red-toned greys
   var palette = [
-    '#c8000f','#e0191f','#a8000c','#d94040','#ff6b6b',
-    '#e87070','#b03030','#f09090','#801010','#c06060'
+    'rgba(200,0,15,0.70)','rgba(180,0,13,0.55)','rgba(160,0,11,0.45)',
+    'rgba(200,0,15,0.38)','rgba(200,0,15,0.30)','rgba(200,0,15,0.24)',
+    'rgba(180,0,13,0.20)','rgba(150,0,10,0.18)','rgba(200,0,15,0.15)','rgba(180,0,13,0.12)'
   ];
 
   var labels = sellers.map(function(s) { return s.name; });
@@ -2025,8 +2049,10 @@ function _drawSellersChart(sellers, emptyMsg) {
         label: 'Units sold',
         data: values,
         backgroundColor: colors,
-        borderRadius: 5,
+        borderRadius: 3,
         borderSkipped: false,
+        barThickness: 14,
+        maxBarThickness: 18,
       }]
     },
     options: {

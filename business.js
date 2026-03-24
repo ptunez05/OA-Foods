@@ -38,6 +38,14 @@ window.addEventListener('online', function() {
 // Saves business enquiry as a CRM client entry.
 // Maps to the clients table — client_type is retail or wholesale.
 
+function generateBizUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0;
+        var v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
 function sendBizToSupabase(payload) {
     var headers = {
         'Content-Type':  'application/json',
@@ -46,10 +54,13 @@ function sendBizToSupabase(payload) {
         'Prefer':        'return=minimal'
     };
 
+    var clientId = payload.client_id || generateBizUUID();
+
     fetch(SUPABASE_URL + '/rest/v1/clients', {
         method:  'POST',
         headers: headers,
         body: JSON.stringify({
+            id:           clientId,
             project_id:   PROJECT_ID,
             client_type:  payload.buyer_type === 'retailer' ? 'retail' : 'wholesale',
             contact_name: payload.name,
@@ -61,8 +72,19 @@ function sendBizToSupabase(payload) {
             heard_from:   payload.heard_from || null,
             notes:        payload.notes || null,
             where_we_are: 'still_talking',
+            tracking_ref: payload.tracking_ref || null,
         })
-    }).catch(function() {});
+    })
+    .then(function(r) {
+        if (!r.ok) {
+            r.text().then(function(t) {
+                console.error('OA biz client insert failed:', r.status, t);
+                // Common fix hint for 403 — run in Supabase SQL editor:
+                // CREATE POLICY "clients_public_insert" ON clients FOR INSERT TO anon WITH CHECK (true);
+            });
+        }
+    })
+    .catch(function(e) { console.error('OA biz client fetch error:', e); });
 }
 
 // ── ORDER STATE ───────────────────────────────────────────────────────────────
@@ -415,16 +437,17 @@ window.processWhatsAppOrder = function() {
 
     // Save enquiry to Supabase — uses offline queue if network is down
     oaBizSend({
-        buyer_type:  selectedTier === 'retailer' ? 'retailer' : 'wholesale',
-        name:        contactPerson || shopName || 'Unknown',
-        phone:       phone,
-        biz_name:    shopName,
-        state:       state,
-        lga:         lga,
-        landmark:    document.getElementById('form-landmark')?.value.trim() || '',
-        interest:    (selectedTier === 'retailer' ? 'Retailer' : 'Wholesale') + ' — ' + currentQty + ' packs @ ₦' + (currentQty * pricePerPack).toLocaleString(),
-        heard_from:  document.getElementById('form-referral')?.value || '',
-        notes:       comments || '',
+        buyer_type:   selectedTier === 'retailer' ? 'retailer' : 'wholesale',
+        name:         contactPerson || shopName || 'Unknown',
+        phone:        phone,
+        biz_name:     shopName,
+        state:        state,
+        lga:          lga,
+        landmark:     document.getElementById('form-landmark')?.value.trim() || '',
+        interest:     (selectedTier === 'retailer' ? 'Retailer' : 'Wholesale') + ' — ' + currentQty + ' packs @ ₦' + (currentQty * pricePerPack).toLocaleString(),
+        heard_from:   document.getElementById('form-referral')?.value || '',
+        notes:        comments || '',
+        tracking_ref: bizOrderRef,
     });
 
     const waURL  = `https://wa.me/2348140226282?text=${encodeURIComponent(msg)}`;
